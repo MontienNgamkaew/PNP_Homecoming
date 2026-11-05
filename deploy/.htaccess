@@ -6,7 +6,8 @@ RewriteEngine On
 RewriteRule ^\.well-known/acme-challenge/ - [L]
 # Credentials, SQL, source maps, and runtime files must never be public.
 RewriteRule (^|/)(\.|config\.|composer\.|package\.) - [F,L]
-RewriteRule \.(sql|sqlite3?|log|bak|env|map)$ - [F,L,NC]
+RewriteRule ^(?:hostinger|tools|tests|docs|prototype|public|data|deploy)(?:/|$) - [F,L,NC]
+RewriteRule \.(sql|sqlite3?|log|bak|env|map|py|sh|md|ya?ml)$ - [F,L,NC]
 RewriteRule ^api(?:/.*)?$ api.php [END,QSA]
 </IfModule>
 
