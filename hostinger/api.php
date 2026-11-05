@@ -36,7 +36,7 @@ try {
  if($path==='/api/admin/login'){
     limited('login',10);$hash=$c['admin_password_hash']??'';
     if(!password_get_info($hash)['algo'])fail(503,'ยังไม่ได้ตั้งรหัสผ่านผู้ดูแล');
-    if(!is_string($d['password']??null)||strlen($d['password'])<16||strlen($d['password'])>1024||!password_verify($d['password'],$hash))fail(401,'รหัสผ่านไม่ถูกต้อง');
+    if(!is_string($d['password']??null)||strlen($d['password'])<8||strlen($d['password'])>1024||!password_verify($d['password'],$hash))fail(401,'รหัสผ่านไม่ถูกต้อง');
     $token=bin2hex(random_bytes(32));query('DELETE FROM admin_sessions WHERE expires<?',[time()]);query('INSERT INTO admin_sessions VALUES (?,?)',[hash('sha256',$token),time()+3600]);
     setcookie('admin',$token,['expires'=>time()+3600,'path'=>'/','secure'=>$c['secure_cookie']??true,'httponly'=>true,'samesite'=>'Strict']);reply(200,['ok'=>true]);
  }

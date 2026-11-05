@@ -443,7 +443,7 @@ async function admin() {
           <p class="muted">กรุณากรอกรหัสผ่านผู้ดูแลระบบ</p>
           <form id="admin-login-form">
             <label>รหัสผ่านผู้ดูแล
-              <input class="ui-input ui-input-bordered" name="password" type="password" required placeholder="รหัสผ่านอย่างน้อย 16 ตัวอักษร" autocomplete="current-password">
+              <input class="ui-input ui-input-bordered" name="password" type="password" required placeholder="รหัสผ่านอย่างน้อย 8 ตัวอักษร" autocomplete="current-password">
             </label>
             <button type="submit" class="btn ui-btn ui-btn-primary full" style="margin-top:12px">เข้าสู่ระบบ →</button>
           </form>
