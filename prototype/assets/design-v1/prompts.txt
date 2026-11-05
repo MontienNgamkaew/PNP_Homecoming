@@ -1,0 +1,15 @@
+hero-desktop-prompt
+Built-in ImageGen. Use case: ads-marketing. Asset type: desktop website hero background, wide 3:1 landscape. Primary request: premium Thai vocational alumni homecoming 30th anniversary website visual background. Color palette: emerald green, midnight navy, restrained warm gold. Composition: left 60 percent dark calm blank space for HTML Thai headline, right edge has subtle Thai geometric ornament and abstract metallic gear detail; sophisticated flowing gold silk ribbons low at edges, warm celebratory golden light at far right. Restrained modern professional aesthetic, clean generous negative space, elegant polished material rendering, no visual clutter. Constraints: absolutely NO text, numbers, logo, people, QR, watermark. This is a background asset, not a whole webpage or mockup. Make image wide landscape approximately 3:1.
+
+
+hero-mobile-prompt
+Use case: ads-marketing
+Asset type: mobile website hero background
+Primary request: premium Thai alumni homecoming emerald green navy gold, portrait 2:3 mobile banner art.
+Composition: center and upper 65% calm dark emerald space for later HTML logo and title; elegant metallic gold silk ribbons at lower quarter sweeping toward corners; subtle Thai ornamental linework on bottom corners; small abstract gear motif integrated at bottom right.
+Lighting/mood: gentle warm gold glows, clean modern professional restrained.
+Constraints: NO text lettering digits logos people QR. Flat production artwork, not a device mockup.
+
+
+page-background-prompt
+Use case: ads-marketing. Asset type: website page background. Bright ivory warm white website background texture for Thai vocational alumni homecoming, ultra subtle pale sage and pale gold Thai geometric filigree only at outer left and right margins, vast blank ivory center occupying 85 percent width for readable UI cards, refined clean premium quiet not busy, vertical 2:3 composition, no text, no logo, no objects, no people, no QR code, no paper folds, no vignette at center. A standalone flat background image, not a website screenshot or mockup.

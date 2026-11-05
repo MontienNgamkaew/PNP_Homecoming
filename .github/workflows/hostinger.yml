@@ -1,0 +1,35 @@
+name: Deploy to Hostinger
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hostinger-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: hostinger-production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify and build
+        run: |
+          npm --prefix prototype ci
+          npm --prefix prototype run build:css
+          find hostinger -name '*.php' -exec php -l {} \;
+          node tools/test_client_settings.cjs
+          python3 -m unittest discover -s tests -v
+          python3 tools/build_hostinger.py --check-only
+      - name: Deploy allowlisted source over SSH
+        env:
+          HOSTINGER_SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          HOSTINGER_SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOSTINGER_SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+          HOSTINGER_DOMAIN_DIR: ${{ secrets.HOSTINGER_DOMAIN_DIR }}
+          HOSTINGER_SSH_PRIVATE_KEY: ${{ secrets.HOSTINGER_SSH_PRIVATE_KEY }}
+          HOSTINGER_SSH_KNOWN_HOSTS: ${{ secrets.HOSTINGER_SSH_KNOWN_HOSTS }}
+        run: bash tools/deploy_hostinger.sh

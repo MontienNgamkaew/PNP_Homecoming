@@ -1,0 +1,14 @@
+{
+  "name": "phanom-phrai-homecoming-prototype",
+  "private": true,
+  "version": "0.3.0",
+  "scripts": {
+    "build:css": "tailwindcss -i ./styles/theme.css -o ./theme.css --minify",
+    "watch:css": "tailwindcss -i ./styles/theme.css -o ./theme.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.4",
+    "daisyui": "^5.7.50",
+    "tailwindcss": "^4.3.4"
+  }
+}

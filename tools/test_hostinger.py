@@ -1,0 +1,236 @@
+"""Integration tests against disposable MySQL + PHP. Requires PORTAL_MYSQL_SOCKET.
+Creates uniquely named databases, never uses the application's existing databases.
+Run: PORTAL_MYSQL_SOCKET=/private/tmp/.../mysql.sock python3 tools/test_hostinger.py
+"""
+import base64, concurrent.futures, http.client, json, os, pathlib, socket, subprocess, tempfile, time, unittest, uuid
+ROOT=pathlib.Path(__file__).resolve().parents[1]
+class Hostinger(unittest.TestCase):
+ @classmethod
+ def setUpClass(cls):
+  cls.tmp=tempfile.TemporaryDirectory(prefix='portal-php-tests-');cls.folder=pathlib.Path(cls.tmp.name)
+  cls.socket=os.environ['PORTAL_MYSQL_SOCKET'];cls.password=os.environ.get('PORTAL_MYSQL_PASSWORD','');cls.name='portal_test_'+uuid.uuid4().hex[:12]
+  cls.sql('CREATE DATABASE '+cls.name+' CHARACTER SET utf8mb4')
+  with socket.socket() as s:s.bind(('127.0.0.1',0));cls.port=s.getsockname()[1]
+  cls.config=cls.folder/'config.php'
+  password_hash=subprocess.check_output(['php','-r',"echo password_hash('test-admin-long-password-1234', PASSWORD_DEFAULT);"],text=True)
+  cls.config.write_text("<?php return "+"['dsn'=>"+repr('mysql:unix_socket='+cls.socket+';dbname='+cls.name+';charset=utf8mb4')+",'db_user'=>'root','db_password'=>"+repr(cls.password)+",'origin'=>'http://127.0.0.1:"+str(cls.port)+"','admin_password_hash'=>"+repr(password_hash)+",'secure_cookie'=>false];")
+  cls.env={**os.environ,'PORTAL_CONFIG':str(cls.config),'PORTAL_LIB':str(ROOT/'hostinger/lib.php'),'PHP_CLI_SERVER_WORKERS':'4'}
+  subprocess.run(['php',str(ROOT/'hostinger/install.php'),str(ROOT/'prototype/assets')],env=cls.env,check=True,stdout=subprocess.DEVNULL)
+  cls.log=open(cls.folder/'php.log','w')
+  cls.process=subprocess.Popen(['php','-S','127.0.0.1:'+str(cls.port),'-t',str(ROOT/'prototype'),str(ROOT/'tools/php_router.php')],env=cls.env,stdout=cls.log,stderr=cls.log,start_new_session=True)
+  for _ in range(80):
+   try:
+    if cls.request('/api/settings')[0]==200:break
+   except OSError:pass
+   time.sleep(.1)
+  else:raise RuntimeError('PHP server failed: '+(cls.folder/'php.log').read_text())
+ @classmethod
+ def sql(cls,sql,database=None):
+  args=['mysql','--no-defaults','--socket='+cls.socket,'-uroot','--batch','--skip-column-names']
+  if database:args.append(database)
+  return subprocess.check_output(args,input=sql,text=True,env={**os.environ,'MYSQL_PWD':cls.password})
+ @classmethod
+ def request(cls,path,data=None,cookie=None,origin=None):
+  conn=http.client.HTTPConnection('127.0.0.1',cls.port,timeout=20);headers={'Content-Type':'application/json','Origin':origin or 'http://127.0.0.1:'+str(cls.port)}
+  if cookie:headers['Cookie']=cookie
+  conn.request('GET' if data is None else 'POST',path,None if data is None else json.dumps(data),headers);r=conn.getresponse();body=r.read();mime=r.getheader('Content-Type','');result=json.loads(body) if 'application/json' in mime else body;headers=dict(r.getheaders());conn.close();return r.status,result,headers
+ @classmethod
+ def tearDownClass(cls):
+  import signal
+  os.killpg(cls.process.pid,signal.SIGTERM);cls.process.wait();cls.log.close();cls.sql('DROP DATABASE '+cls.name);cls.tmp.cleanup()
+ def setUp(self):
+  self.sql('DELETE FROM limits;',self.name)
+  status,_,h=self.request('/api/admin/login',{'password':'test-admin-long-password-1234'});self.assertEqual(status,200);self.cookie=h['Set-Cookie'].split(';')[0]
+ def payload(self,**extra):
+  result=dict(type='tables',name='ผู้ทดสอบ ระบบ',phone='0812345678',amount='2500',tables=[30],file=base64.b64encode(('%PDF-1.4\n'+uuid.uuid4().hex).encode()).decode());result.update(extra);return result
+ def post(self,path,data):return self.request(path,data,self.cookie)
+ def test_01_auth_settings_hero_live_mode(self):
+  self.assertEqual(self.request('/api/admin/orders')[0],401)
+  self.assertEqual(self.request('/api/admin/settings',{})[0],401)
+  self.assertEqual(self.request('/api/admin/login',{'password':'bad'},origin='https://evil.example')[0],403)
+  status,c,_=self.request('/api/settings');self.assertEqual(status,200);self.assertFalse(c['payment_live']);c['hero']['desktopTitle']=40
+  self.assertEqual(self.post('/api/admin/settings',c)[0],200)
+  self.assertEqual(self.post('/api/admin/settings',c)[0],409)
+  c=self.request('/api/settings')[1];c['hero']['desktopTitle']=True;self.assertEqual(self.post('/api/admin/settings',c)[0],400)
+  c=self.request('/api/settings')[1];c['payment_live']=True;self.assertEqual(self.post('/api/admin/settings',c)[0],400)
+  c=self.request('/api/settings')[1];c['hero']['desktopTitle']=34;self.assertEqual(self.post('/api/admin/settings',c)[0],200)
+ def test_02_pricing_shirts_tokens_and_ticket(self):
+  self.assertEqual(self.request('/api/orders',self.payload(amount='1'))[0],409)
+  data=self.payload(type='shirts',amount='648',lines=[dict(size='L',qty=2)],delivery='post',recipient='ผู้รับ ทดสอบ',address='ที่อยู่ทดสอบ 123',postcode='45140')
+  status,order,_=self.request('/api/orders',data);self.assertEqual(status,201,order)
+  self.assertRegex(order['ref'],r'^\d{6}$');self.assertEqual(self.request('/api/orders',data)[0],409)
+  ticket=self.request('/api/ticket',{'ref':order['ref'],'token':order['token']})[1];self.assertEqual(ticket['total_qty'],2);self.assertFalse(ticket['collection_valid']);self.assertNotIn('shipping_address',ticket)
+  self.assertEqual(self.request('/api/ticket',{'ref':order['ref'],'token':'invalid'})[0],404)
+  self.assertEqual(self.post('/api/admin/order-status',{'ref':order['ref'],'status':'confirmed'})[0],200)
+  self.assertEqual(self.post('/api/admin/redeem',{'ref':order['ref']})[0],409)
+ def test_03_concurrent_booking_and_atomic_reactivation(self):
+  def reserve(_):return self.request('/api/orders',self.payload(tables=[11]))
+  with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:results=list(ex.map(reserve,range(4)))
+  self.assertEqual(sorted(r[0] for r in results),[201,409,409,409],results)
+  first=next(r[1] for r in results if r[0]==201)
+  self.assertEqual(self.post('/api/admin/order-status',dict(ref=first['ref'],status='rejected'))[0],200)
+  second=self.request('/api/orders',self.payload(tables=[11]))[1]
+  self.assertEqual(self.post('/api/admin/order-status',dict(ref=first['ref'],status='confirmed'))[0],409)
+  self.assertEqual(self.request('/api/tables')[1]['booked']['11'],'pending')
+  self.assertEqual(self.post('/api/admin/order-status',dict(ref=second['ref'],status='confirmed'))[0],200)
+ def test_04_edits_rollback_and_redemption(self):
+  status,order,_=self.request('/api/orders',self.payload(tables=[20]));self.assertEqual(status,201)
+  status,other,_=self.request('/api/orders',self.payload(tables=[21]));self.assertEqual(status,201)
+  edit=dict(ref=order['ref'],name='แก้ไข ชื่อ',phone='0899999999',tables=[21],amount='2500',reason='แก้ไขทดสอบ')
+  self.assertEqual(self.post('/api/admin/order-edit',edit)[0],409)
+  self.assertEqual(self.request('/api/tables')[1]['booked']['20'],'pending')
+  edit['tables']=[22];self.assertEqual(self.post('/api/admin/order-edit',edit)[0],200)
+  self.assertNotIn('20',self.request('/api/tables')[1]['booked'])
+  self.assertEqual(self.post('/api/admin/order-status',dict(ref=order['ref'],status='confirmed'))[0],200)
+  self.assertEqual(self.post('/api/admin/redeem',dict(ref=order['ref']))[0],200)
+  self.assertEqual(self.post('/api/admin/redeem',dict(ref=order['ref']))[0],409)
+  self.assertEqual(self.post('/api/admin/order-status',dict(ref=order['ref'],status='rejected'))[0],409)
+  self.assertEqual(self.post('/api/admin/order-edit',edit)[0],409)
+ def test_05_real_images_limit_blessing_and_logout(self):
+  raw=(ROOT/'prototype/assets/poster-compact-v1.png').read_bytes();encoded=base64.b64encode(raw).decode()
+  status,p,_=self.post('/api/admin/posters',dict(action='add',title='ทดสอบโปสเตอร์',file=encoded));self.assertEqual(status,201,p)
+  self.assertEqual(self.request(p['url'])[1],raw)
+  self.assertEqual(self.post('/api/admin/posters',dict(action='delete',id=p['id']))[0],200)
+  self.assertEqual(self.request(p['url'])[0],404)
+  self.assertEqual(self.post('/api/admin/posters',dict(action='add',title='ใหญ่เกิน',file=base64.b64encode(b'x'*(5*1024*1024+1)).decode()))[0],400)
+  self.assertEqual(self.post('/api/admin/posters',dict(action='add',title='ไฟล์ปลอม',file=base64.b64encode(b'\x89PNG\r\n\x1a\nfake').decode()))[0],400)
+  msg="คำอวยพร ' \\ <script>";status,b,_=self.post('/api/admin/blessings',dict(action='add',message=msg));self.assertEqual(status,201)
+  self.assertEqual(self.post('/api/admin/blessings',dict(action='toggle',id=b['id'],active=0))[0],200)
+  self.assertEqual(self.post('/api/admin/logout',{})[0],200);self.assertEqual(self.request('/api/admin/orders',cookie=self.cookie)[0],401)
+ def test_06_summary_pagination_and_backup_restore(self):
+  before=self.request('/api/admin/summary',cookie=self.cookie)[1]
+  # More than old 500-row limit; fixtures inserted only into this disposable DB.
+  values=','.join("('fixture-%d','%s','donate','ทดสอบ','0800000000',100,'2026-11-05','','','%s','application/pdf','slip','confirmed',%d,'{}')"%(n,'0'*64,('%064x'%n),n) for n in range(501))
+  self.sql('INSERT INTO orders(ref,secret_hash,type,name,phone,amount_cents,transferred,tables_list,category,digest,mime,slip,status,created,pricing_snapshot) VALUES '+values,self.name)
+  summary=self.request('/api/admin/summary',cookie=self.cookie)[1];self.assertEqual(summary['total'],before['total']+501);self.assertEqual(summary['confirmed_cents'],before['confirmed_cents']+50100)
+  self.assertEqual(len(self.request('/api/admin/orders?page=2',cookie=self.cookie)[1]),100)
+  self.assertEqual(self.request('/api/admin/summary?q=fixture-',cookie=self.cookie)[1]['filtered_count'],501)
+  self.assertEqual(len(self.request('/api/admin/orders?q=fixture-500',cookie=self.cookie)[1]),1)
+  backup=self.folder/'backup.json';subprocess.run(['php',str(ROOT/'hostinger/backup.php'),str(backup)],env=self.env,check=True,stdout=subprocess.DEVNULL)
+  restoredb=self.name+'_restore';self.sql('CREATE DATABASE '+restoredb+' CHARACTER SET utf8mb4')
+  original=self.config.read_text();restoreconfig=self.folder/'restore.php';restoreconfig.write_text(original.replace('dbname='+self.name+';','dbname='+restoredb+';'));env={**self.env,'PORTAL_CONFIG':str(restoreconfig)}
+  try:
+   result=subprocess.run(['php',str(ROOT/'hostinger/restore.php'),str(backup),'--confirm-empty'],env=env,capture_output=True,text=True);self.assertEqual(result.returncode,0,result.stderr)
+   self.assertEqual(int(self.sql('SELECT COUNT(*) FROM orders',restoredb)),summary['total'])
+   self.assertEqual(self.sql('SELECT SUM(amount_cents) FROM orders',restoredb),self.sql('SELECT SUM(amount_cents) FROM orders',self.name))
+   self.assertEqual(self.sql('SELECT SHA2(image,256) FROM posters ORDER BY id',restoredb),self.sql('SELECT SHA2(image,256) FROM posters ORDER BY id',self.name))
+   result=subprocess.run(['php',str(ROOT/'hostinger/restore.php'),str(backup),'--confirm-empty'],env=env,capture_output=True);self.assertNotEqual(result.returncode,0)
+  finally:self.sql('DROP DATABASE '+restoredb)
+ def test_07_rate_limit(self):
+  for _ in range(9):self.assertEqual(self.request('/api/admin/login',dict(password='wrong'))[0],401)
+  self.assertEqual(self.request('/api/admin/login',dict(password='wrong'))[0],429)
+ def test_08_sqlite_migration_preserves_legacy(self):
+  import sqlite3, hashlib
+  legacy=self.folder/'legacy';legacy.mkdir()
+  subprocess.run(['python3','-c','import server; server.init()'],cwd=ROOT,env={**os.environ,'DATA_DIR':str(legacy)},check=True)
+  path=legacy/'donations.sqlite3';token='legacy-private-token';slip=b'%PDF-1.4 legacy preserved'
+  with sqlite3.connect(path) as connection:
+   connection.execute('INSERT INTO donations(ref,secret_hash,name,cents,transferred,contact,digest,mime,slip,status,created) VALUES (?,?,?,?,?,?,?,?,?,?,?)',('PP-OLD-1',hashlib.sha256(token.encode()).hexdigest(),'ผู้บริจาคเดิม',12345,'2026-11-05T09:00','legacy-contact@example.invalid',hashlib.sha256(slip).hexdigest(),'application/pdf',slip,'approved',123))
+  exported=self.folder/'migration.json';subprocess.run(['python3',str(ROOT/'tools/export_sqlite.py'),str(path),str(exported)],check=True,stdout=subprocess.DEVNULL)
+  target=self.name+'_migration';self.sql('CREATE DATABASE '+target+' CHARACTER SET utf8mb4');config=self.folder/'migration-config.php';config.write_text(self.config.read_text().replace('dbname='+self.name+';','dbname='+target+';'))
+  env={**self.env,'PORTAL_CONFIG':str(config)}
+  try:
+   result=subprocess.run(['php',str(ROOT/'hostinger/restore.php'),str(exported),'--confirm-empty'],env=env,capture_output=True,text=True);self.assertEqual(result.returncode,0,result.stderr)
+   self.assertEqual(self.sql("SELECT amount_cents,status,phone FROM orders WHERE ref='PP-OLD-1'",target).strip(),'12345\tconfirmed\tlegacy-contact@example.invalid')
+   self.assertEqual(self.sql("SELECT SHA2(slip,256) FROM orders WHERE ref='PP-OLD-1'",target).strip(),hashlib.sha256(slip).hexdigest())
+   subprocess.run(['php',str(ROOT/'hostinger/install.php'),str(ROOT/'prototype/assets')],env=env,check=True,stdout=subprocess.DEVNULL)
+   self.assertEqual(self.sql('SELECT COUNT(*) FROM orders',target).strip(),'1')
+  finally:self.sql('DROP DATABASE '+target)
+ def test_09_release_archive_layout(self):
+  import zipfile, hashlib
+  archive=self.folder/'release.zip';subprocess.run(['python3',str(ROOT/'tools/build_hostinger.py'),'--output',str(archive)],check=True,stdout=subprocess.DEVNULL)
+  destination=self.folder/'unpacked'
+  with zipfile.ZipFile(archive) as z:
+   self.assertIsNone(z.testzip());names=z.namelist();self.assertFalse(any(n.endswith('/config.php') or 'node_modules' in n or '.sqlite' in n for n in names));manifest=json.loads(z.read('release-manifest.json'))
+   for name,digest in manifest.items():self.assertEqual(hashlib.sha256(z.read(name)).hexdigest(),digest)
+   for name in ['index.html','theme.css','app.js']:
+    self.assertEqual(z.read('public_html/'+name),(ROOT/'prototype'/name).read_bytes())
+   z.extractall(destination)
+  router=destination/'router.php';router.write_text("<?php if(str_starts_with(parse_url($_SERVER['REQUEST_URI'],PHP_URL_PATH),'/api/')){require __DIR__.'/public_html/api.php';return true;} return false;")
+  with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
+  env={**self.env};env.pop('PORTAL_LIB',None);env.pop('PHP_CLI_SERVER_WORKERS',None)
+  process=subprocess.Popen(['php','-S','127.0.0.1:'+str(port),'-t',str(destination/'public_html'),str(router)],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+  try:
+   for _ in range(40):
+    try:
+     conn=http.client.HTTPConnection('127.0.0.1',port,timeout=2);conn.request('GET','/api/settings');response=conn.getresponse();data=json.loads(response.read());conn.close();break
+    except OSError:time.sleep(.1)
+   else:self.fail('Packaged API did not start')
+   self.assertEqual(response.status,200,data);self.assertEqual(data['backend'],'php')
+   conn=http.client.HTTPConnection('127.0.0.1',port,timeout=3);conn.request('GET','/api/admin/orders',headers={'Cookie':self.cookie});response=conn.getresponse();response.read();conn.close();self.assertEqual(response.status,200)
+  finally:process.terminate();process.wait()
+ def test_10_legacy_price_corrections_keep_totals(self):
+  status,order,_=self.request('/api/orders',self.payload(tables=[50]));self.assertEqual(status,201)
+  self.sql("UPDATE orders SET pricing_snapshot='{}',amount_cents=230000 WHERE ref='"+order['ref']+"'",self.name)
+  edit=dict(ref=order['ref'],name='แก้ชื่อรายการเก่า',phone='0800000000',tables=[50],amount='2300',reason='แก้ชื่อเท่านั้น')
+  status,result,_=self.post('/api/admin/order-edit',edit);self.assertEqual(status,200,result);self.assertEqual(result['amount_cents'],230000)
+  edit['tables']=[51];self.assertEqual(self.post('/api/admin/order-edit',edit)[0],409)
+  status,shirt,_=self.request('/api/orders',self.payload(type='shirts',amount='598',lines=[dict(size='L',qty=1),dict(size='M',qty=1)],delivery='pickup'));self.assertEqual(status,201)
+  self.sql("UPDATE orders SET pricing_snapshot='{}',amount_cents=55000 WHERE ref='"+shirt['ref']+"'",self.name)
+  edit=dict(ref=shirt['ref'],name='แก้ชื่อเสื้อเก่า',phone='0800000000',amount='550',lines=[dict(size='M',qty=1),dict(size='L',qty=1)],delivery='pickup',reason='รักษายอดเดิม')
+  status,result,_=self.post('/api/admin/order-edit',edit);self.assertEqual(status,200,result);self.assertEqual(result['amount_cents'],55000)
+  edit['lines'][0]['qty']=2;self.assertEqual(self.post('/api/admin/order-edit',edit)[0],409)
+  edit.update(reprice=True,amount='897');self.assertEqual(self.post('/api/admin/order-edit',edit)[0],200)
+ def test_11_layout_boundaries_and_vip_closed(self):
+  self.assertEqual(self.request('/api/tables')[1]['summary']['total'],61)
+  for table in (0,62,100,'VIP-1','VIP-2'):
+   self.assertEqual(self.request('/api/orders',self.payload(tables=[table]))[0],400)
+  self.assertEqual(self.request('/api/orders',self.payload(tables=[61]))[0],201)
+ def test_12_category_and_status_filters(self):
+  records={}
+  for kind,amount,extra in [('donate','101.25',{}),('fund','202.50',{}),('tables','2500',{'tables':[4]}),('shirts','299',{'lines':[{'size':'M','qty':1}],'delivery':'pickup'})]:
+   status,order,_=self.request('/api/orders',self.payload(type=kind,amount=amount,**extra));self.assertEqual(status,201,order);records[kind]=order
+  self.assertEqual(self.post('/api/admin/order-status',dict(ref=records['donate']['ref'],status='confirmed'))[0],200)
+  rows=self.request('/api/admin/orders?type=fund&status=pending',cookie=self.cookie)[1];self.assertTrue(all(r['type']=='fund' and r['status']=='pending' for r in rows));self.assertIn(records['fund']['ref'],[r['ref'] for r in rows])
+  summary=self.request('/api/admin/summary?type=donate&status=confirmed&q='+records['donate']['ref'],cookie=self.cookie)[1];self.assertEqual(summary['filtered_count'],1);self.assertEqual(summary['filtered_confirmed_cents'],10125);self.assertIn('shirts',summary['by_type'])
+  self.assertEqual(self.request('/api/admin/orders?type=invalid',cookie=self.cookie)[0],400)
+  self.assertEqual(self.request('/api/admin/summary?status=invalid',cookie=self.cookie)[0],400)
+ def test_13_phone_lookup_and_ticket_privacy(self):
+  status,order,_=self.request('/api/orders',self.payload(phone='+66 81 234 5678'));self.assertEqual(status,201)
+  for phone in ['0812345678','081-234-5678','+66 81 234 5678']:
+   status,result,_=self.request('/api/status',dict(ref=order['ref'],phone=phone));self.assertEqual(status,200,result);self.assertEqual(set(result),{'ref','type','amount','status','label'})
+  wrong=self.request('/api/status',dict(ref=order['ref'],phone='0899999999'));missing=self.request('/api/status',dict(ref='999999',phone='0899999999'));self.assertEqual(wrong[:2],missing[:2]);self.assertEqual(wrong[0],404)
+  self.assertNotEqual(self.request('/api/ticket',dict(ref=order['ref'],phone='0812345678'))[0],200)
+  self.assertEqual(self.request('/api/ticket',dict(ref=order['ref'],token=order['token']))[0],200)
+  self.assertEqual(set(self.request('/api/status',dict(ref=order['ref'],token=order['token']))[1]),{'status','label'})
+  self.sql('DELETE FROM limits',self.name)
+  for _ in range(20):self.assertEqual(self.request('/api/status',dict(ref='999999',phone='0812345678'))[0],404)
+  self.assertEqual(self.request('/api/status',dict(ref='999999',phone='0812345678'))[0],429)
+ def test_14_admin_ticket_reissue(self):
+  for kind in ['tables','shirts']:
+   status,order,_=self.request('/api/orders',self.payload(tables=[32],type=kind,amount='299' if kind=='shirts' else '2500',lines=[dict(size='M',qty=1)],delivery='pickup'));self.assertEqual(status,201)
+   payload=dict(ref=order['ref'],reason='ผู้จองลืมลิงก์',verified=True)
+   self.assertEqual(self.request('/api/admin/ticket-reissue',payload)[0],401)
+   self.assertEqual(self.post('/api/admin/ticket-reissue',{**payload,'verified':False})[0],400)
+   before=self.request('/api/admin/orders?q='+order['ref'],cookie=self.cookie)[1]
+   status,result,_=self.post('/api/admin/ticket-reissue',payload);self.assertEqual(status,200,result)
+   self.assertEqual(self.request('/api/ticket',dict(ref=order['ref'],token=order['token']))[0],404)
+   self.assertEqual(self.request('/api/ticket',dict(ref=order['ref'],token=result['token']))[0],200)
+   self.assertEqual(self.request('/api/status',dict(ref=order['ref'],phone='0812345678'))[0],200)
+   self.assertEqual(self.request('/api/admin/orders?q='+order['ref'],cookie=self.cookie)[1],before)
+   audit=self.sql("SELECT new FROM order_audit WHERE ref='"+order['ref']+"' ORDER BY id DESC LIMIT 1",self.name);self.assertIn('ticket_reissued',audit);self.assertNotIn(result['token'],audit)
+   self.assertEqual(self.post('/api/admin/order-status',dict(ref=order['ref'],status='confirmed'))[0],200)
+   self.assertEqual(self.post('/api/admin/redeem',dict(ref=order['ref']))[0],200)
+   self.assertEqual(self.post('/api/admin/ticket-reissue',payload)[0],409)
+  status,cancelled,_=self.request('/api/orders',self.payload(tables=[31]));self.assertEqual(status,201)
+  self.post('/api/admin/order-status',dict(ref=cancelled['ref'],status='rejected'))
+  self.assertEqual(self.post('/api/admin/ticket-reissue',dict(ref=cancelled['ref'],reason='ยกเลิกแล้ว',verified=True))[0],409)
+ def test_15_preflight_and_production_configuration(self):
+  before=self.sql('SELECT COUNT(*),COALESCE(SUM(amount_cents),0) FROM orders',self.name)
+  result=subprocess.run(['php',str(ROOT/'hostinger/check.php')],env=self.env,capture_output=True,text=True)
+  self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+  self.assertIn('PASS Four account settings',result.stdout)
+  self.assertEqual(self.sql('SELECT COUNT(*),COALESCE(SUM(amount_cents),0) FROM orders',self.name),before)
+  self.assertNotIn('test-admin-long-password-1234',result.stdout+result.stderr)
+  for origin,secure,valid in [('http://example.com',False,False),('https://example.com',False,False),('https://user@example.com',True,False),('https://example.com#fragment',True,False),('https://example.com',True,True)]:
+   config=self.folder/('origin-'+uuid.uuid4().hex+'.php');config.write_text("<?php return ['origin'=>"+repr(origin)+",'secure_cookie'=>"+('true' if secure else 'false')+"];")
+   env={**self.env,'PORTAL_CONFIG':str(config)}
+   code='require '+json.dumps(str(ROOT/'hostinger/lib.php'))+'; try {config();exit(0);} catch(Throwable $e){exit(3);}'
+   result=subprocess.run(['php','-r',code],env=env,capture_output=True)
+   self.assertEqual(result.returncode,0 if valid else 3,origin)
+ def test_16_lightweight_settings_revision(self):
+  settings=self.request('/api/settings')[1];status,revision,_=self.request('/api/settings/revision');self.assertEqual(status,200);self.assertEqual(revision,{'revision':settings['revision']})
+  settings['hero']['eyebrow']='ตรวจเลขรุ่น';status,saved,_=self.post('/api/admin/settings',settings);self.assertEqual(status,200)
+  self.assertEqual(self.request('/api/settings/revision')[1],{'revision':saved['revision']})
+  self.assertLess(len(json.dumps(revision)),40)
+if __name__=='__main__':unittest.main(verbosity=2)

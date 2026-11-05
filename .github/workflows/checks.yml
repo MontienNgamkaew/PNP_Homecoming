@@ -1,0 +1,41 @@
+name: Project checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build CSS and verify source
+        run: |
+          npm --prefix prototype ci
+          npm --prefix prototype run build:css
+          node --check prototype/app.js
+          find prototype/assets -name '*.js' -exec node --check {} \;
+          find hostinger -name '*.php' -exec php -l {} \;
+          node tools/test_client_settings.cjs
+          python3 tools/build_hostinger.py --check-only
+          bash -n tools/deploy_hostinger.sh
+      - name: Python integration tests
+        run: python3 -m unittest discover -s tests -v
+      - name: MySQL integration tests
+        env:
+          PORTAL_MYSQL_SOCKET: /var/run/mysqld/mysqld.sock
+          PORTAL_MYSQL_PASSWORD: root
+        run: |
+          sudo systemctl start mysql.service
+          python3 - <<'PY'
+          import sys,unittest
+          sys.path.insert(0,'tools')
+          from test_hostinger import Hostinger
+          names=[n for n in unittest.defaultTestLoader.getTestCaseNames(Hostinger) if n!='test_09_release_archive_layout']
+          result=unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(Hostinger(n) for n in names))
+          sys.exit(not result.wasSuccessful())
+          PY
