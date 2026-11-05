@@ -20,3 +20,5 @@ prototype/*.png
 prototype/*.zip
 prototype/ticket-examples/
 prototype/assets/*preview*.html
+
+.deploy-keys/
