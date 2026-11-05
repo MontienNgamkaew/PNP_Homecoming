@@ -14,6 +14,12 @@ try {
  }
  if(str_starts_with($path,'/api/admin/')&&$path!=='/api/admin/login')auth();
  if($method==='GET'){
+    if($path==='/api/totals'){
+       $totals=array_fill_keys(['donate','fund','tables','shirts'],0);
+       foreach(query("SELECT type,COALESCE(SUM(amount_cents),0) AS cents FROM orders WHERE status='confirmed' GROUP BY type")->fetchAll() as $r){if(array_key_exists($r['type'],$totals))$totals[$r['type']]=(int)$r['cents'];}
+       reply(200,['by_type'=>$totals,'total_cents'=>array_sum($totals),'updated_at'=>gmdate('c')]);
+    }
+
     if($path==='/api/settings/revision')reply(200,['revision'=>(int)query('SELECT revision FROM app_settings WHERE id=1')->fetchColumn()]);
     if($path==='/api/settings')reply(200,settings());
     if($path==='/api/posters'){$rows=query('SELECT id,title FROM posters WHERE deleted_at IS NULL ORDER BY CASE id WHEN \'default-compact\' THEN 0 ELSE 1 END,created,id')->fetchAll();foreach($rows as &$r)$r['url']='/api/posters/'.$r['id'].'/image';reply(200,$rows);}

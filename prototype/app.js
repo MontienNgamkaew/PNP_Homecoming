@@ -740,6 +740,7 @@ async function loadSettings() {
 
 async function route() {
   stopPosterCarousel();
+  stopTotals();
   const version = ++routeVersion;
   app.innerHTML = '<p class="muted" role="status">กำลังโหลดข้อมูลล่าสุด…</p>';
   try { await Promise.all([loadSettings(), loadPosters()]); } catch (error) {
@@ -751,11 +752,11 @@ async function route() {
   let page = location.hash.slice(1) || 'home';
   let privateTicket=null;
   if(page.startsWith('ticket?')){const params=new URLSearchParams(page.slice(7));privateTicket={ref:params.get('ref')||'',token:params.get('token')||''};history.replaceState(null,'','#ticket');page='ticket';}
-  if (!['home', 'shirts', 'tables', 'donate', 'fund', 'track', 'ticket', 'admin', 'blessing-preview'].includes(page)) page = 'home';
+  if (!['home', 'shirts', 'tables', 'donate', 'fund', 'track', 'ticket', 'admin', 'totals', 'blessing-preview'].includes(page)) page = 'home';
   document.querySelectorAll('header nav a, .mobile-nav a').forEach(a => {
     a.classList.toggle('active', a.hash === '#' + page);
   });
-  ({ home, shirts, tables, donate, fund, track, ticket:()=>ticketAccess(privateTicket), admin, 'blessing-preview': blessingPreview }[page])();
+  ({ home, shirts, tables, donate, fund, track, totals, ticket:()=>ticketAccess(privateTicket), admin, 'blessing-preview': blessingPreview }[page])();
   window.scrollTo(0, 0);
 }
 

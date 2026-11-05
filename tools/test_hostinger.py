@@ -233,4 +233,25 @@ class Hostinger(unittest.TestCase):
   settings['hero']['eyebrow']='ตรวจเลขรุ่น';status,saved,_=self.post('/api/admin/settings',settings);self.assertEqual(status,200)
   self.assertEqual(self.request('/api/settings/revision')[1],{'revision':saved['revision']})
   self.assertLess(len(json.dumps(revision)),40)
+ def test_17_public_confirmed_totals(self):
+  before=self.request('/api/totals')[1]
+  self.assertEqual(set(before),{'by_type','total_cents','updated_at'})
+  self.assertEqual(set(before['by_type']),{'donate','fund','tables','shirts'})
+  refs=[]
+  for kind,amount,status in [('donate','123.45','confirmed'),('fund','456.78','confirmed'),('shirts','299','pending'),('donate','999','rejected')]:
+   data=self.payload(type=kind,amount=amount,tables=[])
+   if kind=='shirts':data.update(lines=[dict(size='M',qty=1)],delivery='pickup')
+   code,order,_=self.request('/api/orders',data);self.assertEqual(code,201,order);refs.append(order['ref'])
+   if status!='pending':self.assertEqual(self.post('/api/admin/order-status',{'ref':order['ref'],'status':status})[0],200)
+  try:
+   response=self.request('/api/totals');self.assertEqual(response[0],200)
+   result=response[1]
+   self.assertEqual(result['by_type']['donate']-before['by_type']['donate'],12345)
+   self.assertEqual(result['by_type']['fund']-before['by_type']['fund'],45678)
+   self.assertEqual(result['by_type']['shirts'],before['by_type']['shirts'])
+   self.assertEqual(result['total_cents']-before['total_cents'],58023)
+   self.assertEqual(result['total_cents'],sum(result['by_type'].values()))
+   self.assertEqual(response[2]['Cache-Control'],'no-store')
+  finally:
+   for ref in refs:self.sql("DELETE FROM order_items WHERE order_ref='"+ref+"'; DELETE FROM order_audit WHERE ref='"+ref+"'; DELETE FROM orders WHERE ref='"+ref+"'",self.name)
 if __name__=='__main__':unittest.main(verbosity=2)

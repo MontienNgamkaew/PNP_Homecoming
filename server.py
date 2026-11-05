@@ -342,6 +342,15 @@ class Handler(BaseHTTPRequestHandler):
             if not row: return self.send(404, {'error':'ไม่พบโปสเตอร์'})
             return self.send(200, row['image'], row['mime'])
 
+        if path == '/api/totals':
+            totals = dict.fromkeys(('donate', 'fund', 'tables', 'shirts'), 0)
+            with connect() as c:
+                rows = c.execute("SELECT type,COALESCE(SUM(amount_cents),0) AS cents FROM orders WHERE status='confirmed' GROUP BY type").fetchall()
+            for row in rows:
+                if row['type'] in totals:
+                    totals[row['type']] = int(row['cents'])
+            return self.send(200, {'by_type':totals, 'total_cents':sum(totals.values())})
+
         if path == '/api/settings/revision':
             with connect() as c:
                 revision = c.execute('SELECT revision FROM app_settings WHERE id=1').fetchone()[0]
