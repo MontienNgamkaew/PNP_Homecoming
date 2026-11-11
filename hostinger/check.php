@@ -19,7 +19,7 @@ try{
  if($mode&0077)echo "WARN Private config should normally have mode 600; confirm host account isolation.\n";
  $version=(string)query('SELECT VERSION()')->fetchColumn();check_result('MySQL/MariaDB connection',db()->getAttribute(PDO::ATTR_DRIVER_NAME)==='mysql',$version);
  $packet=(int)query('SELECT @@max_allowed_packet')->fetchColumn();check_result('max_allowed_packet >= 8 MiB',$packet>=8*1024*1024,(string)$packet);
- $required=['app_settings','reference_counter','orders','table_bookings','order_items','order_audit','settings_audit','blessings','posters','limits','admin_sessions','ticket_redemptions'];
+ $required=['app_settings','reference_counter','orders','table_bookings','order_items','order_audit','settings_audit','blessings','posters','limits','admin_sessions','ticket_redemptions','tax_requests','tax_request_audit'];
  $tables=query('SELECT TABLE_NAME,ENGINE,TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()')->fetchAll();$indexed=array_column($tables,null,'TABLE_NAME');
  foreach($required as $table){$r=$indexed[$table]??null;check_result('Table '.$table,$r&&strtoupper($r['ENGINE']??'')==='INNODB'&&str_starts_with($r['TABLE_COLLATION']??'','utf8mb4'));}
  if(!$failed){

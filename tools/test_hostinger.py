@@ -384,4 +384,49 @@ class Hostinger(unittest.TestCase):
   code,image,h=self.request('/api/posters/'+id+'/image');self.assertEqual(h['Content-Type'],'image/webp');self.assertLess(len(image),len(raw));self.assertLessEqual(len(image),600*1024)
   self.assertEqual(self.sql('SELECT COUNT(*) FROM orders',self.name),before)
   repeat=subprocess.run(['php',str(ROOT/'hostinger/optimize-posters.php'),str(backup)],env=self.env,capture_output=True);self.assertNotEqual(repeat.returncode,0)
+ def test_24_tax_requests_validation_privacy_and_workflow(self):
+  tax={'requested':True,'tax_id':'0000000000000','document_name':'ผู้ขอเอกสารทดสอบ','delivery':'pickup'}
+  before=int(self.sql('SELECT COUNT(*) FROM orders',self.name))
+  for invalid in [{**tax,'tax_id':'123'}, {**tax,'delivery':'line'}, {**tax,'delivery':'post','address':'ที่อยู่','recipient':'ผู้รับ','postcode':'x'}, {**tax,'requested':'yes'}]:
+   self.assertEqual(self.request('/api/orders',self.payload(type='donate',amount='100',tax_request=invalid))[0],400)
+  self.assertEqual(self.request('/api/orders',self.payload(tables=[59],tax_request=tax))[0],400)
+  self.assertEqual(int(self.sql('SELECT COUNT(*) FROM orders',self.name)),before)
+  refs=[]
+  for kind,delivery in [('donate','pickup'),('fund','line'),('donate','post')]:
+   info={**tax,'delivery':delivery,'line_id':'test.line-id','recipient':'ผู้รับเอกสารทดสอบ','address':'ที่อยู่รับเอกสาร 123','postcode':'45140'}
+   code,order,_=self.request('/api/orders',self.payload(type=kind,amount='100',tax_request=info));self.assertEqual(code,201,order);refs.append(order['ref'])
+   self.assertNotIn(tax['tax_id'],json.dumps(order));self.assertNotIn('tax_id',json.dumps(self.request('/api/status',{'ref':order['ref'],'phone':'0812345678'})[1]))
+  self.assertEqual(self.request('/api/admin/tax-requests')[0],401)
+  listing=self.request('/api/admin/tax-requests',cookie=self.cookie)[1];self.assertEqual(listing['count'],3)
+  self.assertNotIn(tax['tax_id'],json.dumps(listing));self.assertTrue(all(r['tax_id_masked'].endswith('0000') for r in listing['items']))
+  ref=refs[-1];d=self.request('/api/admin/tax-request?ref='+ref,cookie=self.cookie)[1];self.assertEqual(d['tax_id'],tax['tax_id']);self.assertEqual(d['address'],'ที่อยู่รับเอกสาร 123')
+  self.assertEqual(self.request('/api/admin/tax-request?ref='+ref)[0],401)
+  update={**d,'ref':ref,'reason':'ตรวจข้อมูลคำขอ','request_status':'ready'}
+  self.assertEqual(self.post('/api/admin/tax-request-update',update)[0],409)
+  self.assertEqual(self.post('/api/admin/order-status',{'ref':ref,'status':'confirmed'})[0],200)
+  code,edited,_=self.post('/api/admin/tax-request-update',update);self.assertEqual(code,200,edited);self.assertEqual(edited['request_status'],'ready')
+  self.assertEqual(self.post('/api/admin/tax-request-update',update)[0],409)
+  update={**edited,'ref':ref,'reason':'เปลี่ยนช่องทางรับ','delivery':'line','line_id':'new.line-id'};code,edited,_=self.post('/api/admin/tax-request-update',update);self.assertEqual(code,200,edited);self.assertIsNone(edited['address']);self.assertIsNone(edited['postcode'])
+  self.assertEqual(int(self.sql("SELECT COUNT(*) FROM tax_request_audit WHERE order_ref='"+ref+"'",self.name)),3)
+  code,ordinary,_=self.request('/api/orders',self.payload(type='donate',amount='200',tax_request={'requested':False,'tax_id':tax['tax_id']}));self.assertEqual(code,201);self.assertEqual(int(self.sql("SELECT COUNT(*) FROM tax_requests WHERE order_ref='"+ordinary['ref']+"'",self.name)),0)
+  self.assertEqual(self.post('/api/admin/tax-request-create',{**tax,'ref':ordinary['ref'],'reason':'ผู้บริจาคแจ้งเพิ่มเติม'})[0],200)
+  self.assertEqual(self.post('/api/admin/tax-request-create',{**tax,'ref':ordinary['ref'],'reason':'สร้างซ้ำ'})[0],409)
+  # Cash receipt creates the same private request atomically and remains pending.
+  cash=self.payload(type='fund',amount='150',request_id=uuid.uuid4().hex,collector='ผู้รับเงินทดสอบ',received_date='2026-01-01',tax_request={**tax,'delivery':'line','line_id':'cash.line'})
+  code,order,_=self.post('/api/admin/cash-receipt',cash);self.assertEqual(code,200,order);self.assertEqual(order['status'],'pending')
+  self.assertEqual(self.post('/api/admin/cash-receipt',cash)[1]['ref'],order['ref']);self.assertEqual(int(self.sql("SELECT COUNT(*) FROM tax_requests WHERE order_ref='"+order['ref']+"'",self.name)),1)
+  # Ordinary staff lists, reports, ticket data and public settings never gain tax identifiers.
+  for path in ['/api/admin/orders','/api/admin/reports','/api/settings']:
+   body=self.request(path,cookie=self.cookie)[1];self.assertNotIn(tax['tax_id'],json.dumps(body))
+  csv=self.request('/api/admin/report.csv?dataset=orders&status=all',cookie=self.cookie)[1];self.assertNotIn(tax['tax_id'].encode(),csv)
+ def test_25_tax_backup_restore(self):
+  tax={'requested':True,'tax_id':'0000000000000','document_name':'ชื่อเอกสารทดสอบ','delivery':'post','recipient':'ผู้รับทดสอบ','address':'ที่อยู่สำรองทดสอบ 123','postcode':'45140'}
+  code,r,_=self.request('/api/orders',self.payload(type='donate',amount='99',tax_request=tax));self.assertEqual(code,201,r)
+  backup=self.folder/'tax-backup.json';subprocess.run(['php',str(ROOT/'hostinger/backup.php'),str(backup)],env=self.env,check=True,capture_output=True)
+  saved=json.loads(backup.read_text());self.assertIn('tax_requests',saved['tables']);self.assertIn('tax_request_audit',saved['tables'])
+  target=self.name+'_tax_restore';self.sql('CREATE DATABASE '+target+' CHARACTER SET utf8mb4');config=self.folder/'tax-restore-config.php';config.write_text(self.config.read_text().replace('dbname='+self.name+';','dbname='+target+';'))
+  try:
+   restored=subprocess.run(['php',str(ROOT/'hostinger/restore.php'),str(backup),'--confirm-empty'],env={**self.env,'PORTAL_CONFIG':str(config)},capture_output=True);self.assertEqual(restored.returncode,0,restored.stderr)
+   self.assertEqual(self.sql("SELECT tax_id FROM tax_requests WHERE order_ref='"+r['ref']+"'",target).strip(),tax['tax_id'])
+  finally:self.sql('DROP DATABASE '+target)
 if __name__=='__main__':unittest.main(verbosity=2)

@@ -263,11 +263,13 @@ function donate() {
         <label>ยอดร่วมทำบุญ (บาท)
           <input class="ui-input ui-input-bordered" name="amount" type="number" min="1" max="10000000" step="0.01" inputmode="decimal" placeholder="0.00" required>
         </label>
+        ${taxRequestFields()}
         ${slip()}
         <button type="submit" class="btn ui-btn ui-btn-primary full">ยืนยันแจ้งโอนเงินทำบุญผ้าป่า →</button>
       </form>
     </section>
   </div>`;
+  bindTaxRequest($('#donation-form'));
   $('#donation-form').onsubmit = async (e) => {
     e.preventDefault();
     await submitOrder(e.target, 'ทอดผ้าป่า', Number(e.target.elements.amount.value), {
@@ -296,11 +298,13 @@ function fund() {
         <label>ยอดร่วมสมทบทุน (บาท)
           <input class="ui-input ui-input-bordered" name="amount" type="number" min="1" max="10000000" step="0.01" inputmode="decimal" placeholder="0.00" required>
         </label>
+        ${taxRequestFields()}
         ${slip()}
         <button type="submit" class="btn ui-btn ui-btn-primary full">ยืนยันแจ้งโอนเงินสมทบกองทุน →</button>
       </form>
     </section>
   </div>`;
+  bindTaxRequest($('#fund-form'));
   $('#fund-form').onsubmit = async (e) => {
     e.preventDefault();
     const batch = e.target.elements.batch?.value || '';
@@ -341,7 +345,7 @@ function modal(html) {
   $('#modal').hidden = false;
   $('#modal').querySelector('button,input')?.focus();
 }
-function closeModal() { clearAdminTicket(); clearSlipPreview(); resetBlessingCard(); const root=$('#modal'); root.hidden=true; if(root.querySelector('#reissued-token, #slip-preview, #admin-ticket-preview')) root.innerHTML=''; }
+function closeModal() { clearAdminTicket(); clearSlipPreview(); resetBlessingCard(); const root=$('#modal'); root.hidden=true; if(root.querySelector('#reissued-token, #slip-preview, #admin-ticket-preview, #tax-editor')) root.innerHTML=''; }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 function showPoster() { showCurrentPoster(); }
 
@@ -379,7 +383,8 @@ async function submitOrder(form, type, amount, extra = {}) {
       name: form.elements.name?.value || extra.name || '',
       phone: form.elements.phone?.value || extra.phone || '',
       file: base64Data,
-      ...extra
+      ...extra,
+      tax_request: readTaxRequest(form)
     };
 
     const res = await fetch('/api/orders', {
@@ -411,6 +416,7 @@ async function submitOrder(form, type, amount, extra = {}) {
                     : (type === 'fund' || type === 'กองทุนช่างกล') ? 'ร่วมสมทบกองทุนช่างกลสำเร็จ'
                     : 'ร่วมทำบุญทอดผ้าป่าสำเร็จ';
 
+    clearTaxRequest(form);
     showBlessingCard(data, typeTitle, amount);
     return true;
   } catch (err) {
@@ -429,7 +435,7 @@ async function admin() {
   if (tab === 'overview') { adminCategory=''; adminPaymentStatus=''; adminSearch=''; adminPage=1; }
   app.innerHTML = head('ภาพรวมผู้ดูแล', 'ระบบจัดการรายการจองและตรวจสอบสลิปจริง') + `
     <div class="tabs">
-      ${[['overview', 'ภาพรวม'], ['cash', 'บันทึกรับเงินสด'], ['reports', 'รายงาน / CSV'], ['orders', 'รายการทั้งหมด (' + adminOrders.length + ')'], ['blessings', 'คำอวยพร (' + adminBlessings.length + ')'], ['posters', 'โปสเตอร์'], ['hero', 'ข้อความแบนเนอร์'], ['settings', 'ตั้งค่าเว็บไซต์']].map(([v, t]) => `
+      ${[['overview', 'ภาพรวม'], ['cash', 'บันทึกรับเงินสด'], ['reports', 'รายงาน / CSV'], ['tax', 'การลดหย่อนภาษี'], ['orders', 'รายการทั้งหมด (' + adminOrders.length + ')'], ['blessings', 'คำอวยพร (' + adminBlessings.length + ')'], ['posters', 'โปสเตอร์'], ['hero', 'ข้อความแบนเนอร์'], ['settings', 'ตั้งค่าเว็บไซต์']].map(([v, t]) => `
         <button class="ui-btn ui-btn-sm ${tab === v ? 'ui-btn-primary' : 'ui-btn-ghost'}" data-admin-tab="${v}" onclick="tab='${v}';admin()">${t}</button>
       `).join('')}
     </div>
@@ -586,6 +592,8 @@ async function admin() {
     renderPosterAdmin(body);
     return;
   }
+
+  if (tab === 'tax') { renderTaxAdmin(body); return; }
 
   if (tab === 'reports') { renderReportsAdmin(body); return; }
 
@@ -775,7 +783,7 @@ async function loadSettings() {
 async function route() {
   stopPosterCarousel();
   stopTotals();
-  if(document.querySelector('#slip-preview, #admin-ticket-preview'))closeModal();
+  if(document.querySelector('#slip-preview, #admin-ticket-preview, #tax-editor'))closeModal();
   const version = ++routeVersion;
   app.innerHTML = '<p class="muted" role="status">กำลังโหลดข้อมูลล่าสุด…</p>';
   try { await Promise.all([loadSettings(), loadPosters()]); } catch (error) {

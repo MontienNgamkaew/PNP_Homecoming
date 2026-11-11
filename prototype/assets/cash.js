@@ -20,6 +20,7 @@ function renderCashAdmin(body, preset=null) {
       <label>วิธีรับเสื้อ<select name="delivery" class="ui-select ui-select-bordered"><option value="pickup">รับที่วิทยาลัย</option><option value="post">ไปรษณีย์</option></select></label>
       <div id="cash-shipping" hidden><label>ชื่อผู้รับ<input name="recipient" class="ui-input ui-input-bordered" maxlength="150"></label><label>ที่อยู่<textarea name="address" class="ui-textarea ui-textarea-bordered" maxlength="1000"></textarea></label><label>รหัสไปรษณีย์<input name="postcode" class="ui-input ui-input-bordered" pattern="[0-9]{5}" maxlength="5"></label></div></div>
     </div>
+    ${!editing?taxRequestFields():''}
     <label>จำนวนเงิน (บาท)<input name="amount" class="ui-input ui-input-bordered" type="number" min="1" step="0.01" required ${editing?'readonly':''} value="${editing?preset.amount_cents/100:''}"></label>
     <label>วันที่รับเงิน<input name="received_date" class="ui-input ui-input-bordered" type="date" max="${today}" required value="${esc(preset?.cash_receipt?.received_date||today)}"></label>
     <label>ผู้รับเงิน<input name="collector" class="ui-input ui-input-bordered" required minlength="2" maxlength="150" value="${esc(preset?.cash_receipt?.collector||'')}"></label>
@@ -29,6 +30,7 @@ function renderCashAdmin(body, preset=null) {
   </form></div></section>`;
   const form=body.querySelector('#cash-form'), f=form.elements;let linked=null,busy=false,saved=false,lookupVersion=0;
   const amounts={donate:'',fund:''},requestIds={};
+  const taxController=bindTaxRequest(form);
   const isExisting=()=>editing||f.mode.value==='existing';
   const tabs=[...body.querySelectorAll('[data-cash-kind]')];
   function selectKind(button){
@@ -51,6 +53,7 @@ function renderCashAdmin(body, preset=null) {
   const parts=()=>({tables:f.tables.value.split(/[,\s]+/).filter(Boolean).map(tableNumber),lines:sizes.map(size=>({size,qty:Number(f['size_'+size].value)})).filter(it=>it.qty>0)});
   function update(){
     const existing=isExisting(),kind=f.kind.value,booking=['tables','shirts'].includes(kind),post=kind==='shirts'&&f.delivery.value==='post';
+    taxController?.enable(!existing&&['donate','fund'].includes(kind));
     $('#cash-existing').hidden=!existing;$('#cash-new').hidden=existing;f.ref.required=existing;f.ref.readOnly=editing;
     for(const el of $('#cash-new').querySelectorAll('input,select,textarea'))el.disabled=existing;
     $('#cash-phone-help').textContent=booking?'จำเป็นสำหรับติดต่อผู้จอง':'ไม่บังคับ';
@@ -73,9 +76,9 @@ function renderCashAdmin(body, preset=null) {
       const requestKey=[existing?'existing':'new',f.kind.value,existing?f.ref.value:''].join(':');
       const data={request_id:requestIds[requestKey]||(requestIds[requestKey]=crypto.randomUUID()),ref:existing?f.ref.value:'',amount:f.amount.value,collector:f.collector.value,received_date:f.received_date.value,note:f.note.value};
       if(editing){data.edit_receipt=true;data.reason=f.reason.value;}
-      else if(!existing){Object.assign(data,{type:f.kind.value,name:f.name.value,phone:f.phone.value,...parts(),delivery:f.delivery.value,recipient:f.recipient.value,address:f.address.value,postcode:f.postcode.value});const file=f.evidence.files[0];if(file){if(file.size>5*1024*1024)throw new Error('เอกสารแนบต้องไม่เกิน 5 MB');data.file=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=()=>reject(new Error('อ่านไฟล์ไม่สำเร็จ'));r.readAsDataURL(file);});}}
+      else if(!existing){Object.assign(data,{type:f.kind.value,tax_request:readTaxRequest(form),name:f.name.value,phone:f.phone.value,...parts(),delivery:f.delivery.value,recipient:f.recipient.value,address:f.address.value,postcode:f.postcode.value});const file=f.evidence.files[0];if(file){if(file.size>5*1024*1024)throw new Error('เอกสารแนบต้องไม่เกิน 5 MB');data.file=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=()=>reject(new Error('อ่านไฟล์ไม่สำเร็จ'));r.readAsDataURL(file);});}}
       const r=await fetch('/api/admin/cash-receipt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),d=await r.json();if(!r.ok)throw new Error(d.error||'บันทึกไม่สำเร็จ');
-      saved=true;for(const el of form.elements)el.disabled=true;
+      clearTaxRequest(form);saved=true;for(const el of form.elements)el.disabled=true;
       $('#cash-status').textContent=`บันทึกแล้ว · เลขอ้างอิง ${d.ref} · ${d.status==='pending'?'รอตรวจสอบ ยังไม่รวมยอด':'สถานะเดิมคงอยู่'}`;
       const next=document.createElement('button');next.type='button';next.className='ui-btn ui-btn-outline';next.textContent='ไปตรวจสอบรายการ';next.onclick=()=>{adminSearch=d.ref;adminPage=1;tab='orders';admin();};form.append(next);
     }catch(e){$('#cash-status').textContent=e.message+' · หากการเชื่อมต่อขาดหาย กดบันทึกซ้ำในฟอร์มเดิมได้โดยไม่สร้างยอดซ้ำ';submit.disabled=false;}

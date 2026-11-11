@@ -4,7 +4,7 @@ if(PHP_SAPI!=='cli'){http_response_code(404);exit;}
 require __DIR__.'/lib.php';
 if(($argv[2]??'')!=='--confirm-empty')throw new RuntimeException('Usage: php restore.php /private/backup.json --confirm-empty (NEW empty database only)');
 $backup=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);if(($backup['format']??'')!=='portal-backup-v1')throw new RuntimeException('Unknown backup format');
-$tables=['app_settings','reference_counter','orders','table_bookings','order_items','order_audit','settings_audit','blessings','posters','ticket_redemptions'];
+$tables=['app_settings','reference_counter','orders','table_bookings','order_items','order_audit','settings_audit','blessings','posters','ticket_redemptions','tax_requests','tax_request_audit'];
 if(array_diff(array_keys($backup['tables']??[]),$tables))throw new RuntimeException('Unexpected tables');
 foreach(explode(';',file_get_contents(__DIR__.'/schema.sql')) as $statement)if(trim($statement))db()->exec($statement);
 transaction(function()use($tables,$backup){foreach($tables as $table)if((int)query('SELECT COUNT(*) FROM `'.$table.'`')->fetchColumn()!==0)throw new RuntimeException('Destination is not empty. Use a NEW database; existing records were not changed.');

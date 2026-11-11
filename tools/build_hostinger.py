@@ -9,7 +9,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSET_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.wav', '.mp3', '.woff', '.woff2', '.js', '.bcmap', '.pfb', '.ttf', '.wasm'}
-PRIVATE_FILES = ('lib.php', 'reports.php', 'poster-images.php', 'optimize-posters.php', 'schema.sql', 'config.example.php', 'install.php', 'check.php', 'backup.php', 'restore.php', 'import.php')
+PRIVATE_FILES = ('lib.php', 'tax.php', 'tax-schema.sql', 'reports.php', 'poster-images.php', 'optimize-posters.php', 'schema.sql', 'config.example.php', 'install.php', 'check.php', 'backup.php', 'restore.php', 'import.php')
 
 
 def sources():

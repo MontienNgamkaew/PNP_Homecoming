@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require getenv('PORTAL_LIB') ?: dirname(__DIR__).'/portal-private/lib.php';
+require_once dirname(getenv('PORTAL_LIB') ?: dirname(__DIR__).'/portal-private/lib.php').'/tax.php';
 try {
  $c=config();$method=$_SERVER['REQUEST_METHOD'];$path=parse_url($_SERVER['REQUEST_URI'],PHP_URL_PATH);
  if($method==='OPTIONS')reply(204,'','text/plain');
@@ -14,6 +15,8 @@ try {
  }
  if(str_starts_with($path,'/api/admin/')&&$path!=='/api/admin/login')auth();
  if($method==='GET'){
+    if($path==='/api/admin/tax-requests')reply(200,tax_requests_list($_GET));
+    if($path==='/api/admin/tax-request')reply(200,tax_request_detail(text($_GET['ref']??null,1,40,'เลขอ้างอิง')));
     if(in_array($path,['/api/admin/reports','/api/admin/report.csv'],true)){
        require dirname(getenv('PORTAL_LIB') ?: dirname(__DIR__).'/portal-private/lib.php').'/reports.php';$filters=report_filters($_GET);
        if($path==='/api/admin/report.csv')export_report_csv($filters,text($_GET['dataset']??'summary',1,30,'รายงาน'));
@@ -85,13 +88,16 @@ try {
     $r=query('SELECT status FROM orders WHERE ref=? AND secret_hash=?',[$ref,hash('sha256',$token)])->fetch();if(!$r)fail(404,'เลขอ้างอิงหรือรหัสติดตามไม่ถูกต้อง');
     $labels=['pending'=>'รอตรวจสอบ','confirmed'=>'ยืนยันแล้ว','approved'=>'ตรวจสอบแล้ว','rejected'=>'ไม่ผ่านการตรวจสอบ'];reply(200,['status'=>$r['status'],'label'=>$labels[$r['status']]??$r['status']]);
  }
+ if($path==='/api/admin/tax-request-create')reply(200,admin_create_tax_request($d));
+ if($path==='/api/admin/tax-request-update')reply(200,update_tax_request($d));
  if($path==='/api/orders'){
     limited('orders',15);if(!empty($d['website']))fail(400,'ข้อมูลไม่ถูกต้อง');[$raw,$mime]=image_file($d['file']??null,5*1024*1024,true);$digest=hash('sha256',$raw);$token=bin2hex(random_bytes(32));
-    $out=transaction(function()use($d,$raw,$mime,$digest,$token){$c=settings(true);[$r,$tables,$items]=normalize_order($d,$c);
+    $out=transaction(function()use($d,$raw,$mime,$digest,$token){$c=settings(true);[$r,$tables,$items]=normalize_order($d,$c);$tax=validated_tax_request($d['tax_request']??null,$r['type'],$r['name']);
        if(cents($d['amount']??null,1)!==$r['amount_cents'])fail(409,'ยอดเงินไม่ตรงกับราคาปัจจุบัน กรุณาโหลดหน้าใหม่และตรวจยอดก่อนแจ้งชำระ');
        if(query('SELECT ref FROM orders WHERE digest=?',[$digest])->fetch())fail(409,'สลิปนี้เคยส่งในระบบแล้ว กรุณาใช้เลขอ้างอิงเดิม');
        $ref=allocate_ref();$r+=['ref'=>$ref,'secret_hash'=>hash('sha256',$token),'transferred'=>date('Y-m-d H:i:s'),'digest'=>$digest,'mime'=>$mime,'slip'=>$raw,'status'=>'pending','created'=>time()];
        $keys=array_keys($r);query('INSERT INTO orders (`'.implode('`,`',$keys).'`) VALUES ('.implode(',',array_fill(0,count($keys),'?')).')',array_values($r));claim_tables($ref,$tables,'pending');foreach($items as $it)query('INSERT INTO order_items(order_ref,size,qty) VALUES (?,?,?)',[$ref,$it['size'],$it['qty']]);
+       create_tax_request($ref,$tax);
        return ['ref'=>$ref,'token'=>$token,'status'=>'pending','type'=>$r['type'],'amount'=>$r['amount_cents']/100,'blessing'=>query('SELECT message FROM blessings WHERE active=1 ORDER BY RAND() LIMIT 1')->fetchColumn()?:'ขอให้ท่านและครอบครัวมีความสุขความเจริญ'];
     });reply(201,$out);
  }
@@ -109,13 +115,14 @@ try {
        if($ref===''){
           if($edit)fail(400,'กรุณาระบุเลขอ้างอิง');
           if($existing=query('SELECT ref,status,type FROM orders WHERE digest=?',[$digest])->fetch())return $existing;
-          [$r,$tables,$items]=normalize_order($d,$c,true);
+          [$r,$tables,$items]=normalize_order($d,$c,true);$tax=validated_tax_request($d['tax_request']??null,$r['type'],$r['name']);
           if(cents($d['amount']??null,1)!==$r['amount_cents'])fail(409,'ยอดรับเงินไม่ตรงกับราคาและรายละเอียด กรุณาตรวจสอบอีกครั้ง');
           $id=allocate_ref();$snapshot=json_decode($r['pricing_snapshot'],true);$snapshot['payment_receipt']=$receipt;$r['pricing_snapshot']=js($snapshot);
           $r+=['ref'=>$id,'secret_hash'=>hash('sha256',bin2hex(random_bytes(32))),'transferred'=>$received,'digest'=>$digest,'mime'=>$mime,'slip'=>$raw,'status'=>'pending','created'=>time()];
           $keys=array_keys($r);query('INSERT INTO orders (`'.implode('`,`',$keys).'`) VALUES ('.implode(',',array_fill(0,count($keys),'?')).')',array_values($r));
           claim_tables($id,$tables,'pending');foreach($items as $it)query('INSERT INTO order_items(order_ref,size,qty) VALUES (?,?,?)',[$id,$it['size'],$it['qty']]);
           query('INSERT INTO order_audit(ref,old,new,at) VALUES (?,?,?,?)',[$id,'',js(['action'=>'cash_created','receipt'=>$receipt,'amount_cents'=>$r['amount_cents']]),time()]);
+          create_tax_request($id,$tax);
           return ['ref'=>$id,'status'=>'pending','type'=>$r['type']];
        }
        $old=query('SELECT * FROM orders WHERE ref=? FOR UPDATE',[$ref])->fetch();if(!$old)fail(404,'ไม่พบรายการ');$previous=payment_receipt($old);
@@ -123,6 +130,7 @@ try {
        if($edit){if(!$previous)fail(409,'รายการนี้ยังไม่มีข้อมูลรับเงินสด');}
        else{if($previous)fail(409,'รายการนี้บันทึกรับเงินสดแล้ว กรุณาแก้ไขรายการเดิม');if($old['status']!=='pending')fail(409,'รับเงินสดได้เฉพาะรายการรอตรวจสอบ');}
        if(!$edit&&cents($d['amount']??null,1)!==(int)$old['amount_cents'])fail(409,'ยอดเงินไม่ตรงกับรายการเดิม');
+       if(array_key_exists('tax_request',$d)&&!query('SELECT order_ref FROM tax_requests WHERE order_ref=?',[$ref])->fetch()){create_tax_request($ref,validated_tax_request($d['tax_request'],$old['type'],$old['name']));}
        $snapshot=json_decode($old['pricing_snapshot'],true)?:[];$snapshot['payment_receipt']=$receipt;
        query('UPDATE orders SET pricing_snapshot=?,transferred=? WHERE ref=?',[js($snapshot),$received,$ref]);
        // Preserve the originally uploaded slip when linking an existing order.
