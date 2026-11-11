@@ -10,7 +10,7 @@ function totals() {
     <div class="totals-title"><img class="totals-event-logo" src="assets/totals/event-logo-cutout-v1.webp" alt="คืนสู่เหย้าศิษย์เก่า การอาชีพพนมไพร ครั้งที่ 2" width="480" height="270"><h1>ขอบคุณทุกน้ำใจ ที่ร่วมสร้างอนาคตให้น้อง ๆ</h1><p>คืนสู่เหย้า การอาชีพพนมไพร ครั้งที่ 2</p></div>
     <div class="totals-grand"><span>ยอดรวม</span><strong id="totals-grand-value">—</strong><span class="totals-unit">บาท</span></div>
     <div class="totals-categories">${categories.map(([key,n,title,icon])=>`<article class="totals-category totals-${key}"><div class="totals-category-top"><span>${n}</span><span aria-hidden="true">${icon}</span></div><h2>${title}</h2><div><strong id="totals-${key}-value">—</strong><small>บาท</small></div></article>`).join('')}</div>
-    <div class="totals-foot"><span>เฉพาะยอดที่ตรวจสอบและยืนยันแล้ว</span><span id="totals-update" role="status">กำลังโหลดข้อมูล…</span><button type="button" class="totals-refresh">↻ อัปเดตยอด</button></div>
+    <div class="totals-foot"><span>เฉพาะยอดที่ตรวจสอบและยืนยันแล้ว</span><button type="button" class="totals-refresh">↻ อัปเดตยอด</button><div class="totals-timestamp"><span id="totals-update">กำลังโหลดวันและเวลาของยอด…</span><small id="totals-connection" role="status">อัปเดตอัตโนมัติทุก 15 วินาที</small></div></div>
   </section>`;
   const board = document.getElementById('totals-board');
   const format = cents => (cents / 100).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -24,13 +24,16 @@ function totals() {
       if(!response.ok) throw new Error('unavailable');
       const data = await response.json();
       if(!Number.isSafeInteger(data.total_cents) || data.total_cents < 0 || categories.some(([key])=>!Number.isSafeInteger(data.by_type?.[key]) || data.by_type[key]<0) || categories.reduce((sum,[key])=>sum+data.by_type[key],0)!==data.total_cents) throw new Error('invalid totals');
+      const asOf = new Date(data.updated_at || Date.now());
+      if(!Number.isFinite(asOf.getTime())) throw new Error('invalid timestamp');
       if(!board.isConnected) return;
       document.getElementById('totals-grand-value').textContent = format(data.total_cents);
       for(const [key] of categories) document.getElementById(`totals-${key}-value`).textContent = format(data.by_type[key]);
       board.classList.remove('totals-stale');
-      document.getElementById('totals-update').textContent = 'อัปเดต '+new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+' · ทุก 15 วินาที';
+      document.getElementById('totals-update').textContent = 'ยอด ณ '+asOf.toLocaleDateString('th-TH',{timeZone:'Asia/Bangkok',day:'numeric',month:'long',year:'numeric'})+' เวลา '+asOf.toLocaleTimeString('th-TH',{timeZone:'Asia/Bangkok',hour:'2-digit',minute:'2-digit',second:'2-digit'})+' น.';
+      document.getElementById('totals-connection').textContent='เวลาไทย · อัปเดตทุก 15 วินาที';
     } catch(error) {
-      if(board.isConnected) {board.classList.add('totals-stale'); document.getElementById('totals-update').textContent='เชื่อมต่อไม่สำเร็จ · กำลังแสดงยอดล่าสุดที่โหลดได้';}
+      if(board.isConnected) {board.classList.add('totals-stale'); document.getElementById('totals-connection').textContent='เชื่อมต่อไม่สำเร็จ · กำลังแสดงยอดล่าสุดที่โหลดได้';}
     } finally { clearTimeout(timeout); busy=false; if(totalsController===controller) totalsController=null; }
   }
   const screen = board.querySelector('.totals-screen');
