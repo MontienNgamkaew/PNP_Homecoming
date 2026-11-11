@@ -7,8 +7,8 @@ function totals() {
   const categories = [['donate','01','ทอดผ้าป่าเพื่อการศึกษา','♡'],['fund','02','กองทุนช่างกลโรงงาน','⚙'],['tables','03','จองโต๊ะจีน','◉'],['shirts','04','เสื้อที่ระลึก','✦']];
   app.innerHTML = `<section class="totals-board" id="totals-board" aria-label="ยอดร่วมงานที่ยืนยันแล้ว">
     <div class="totals-toolbar"><a href="#home">← หน้าหลัก</a><button class="totals-screen" type="button">⛶ เต็มหน้าจอ</button></div>
-    <div class="totals-title"><img class="totals-event-logo" src="assets/totals/event-logo-cutout-v1.webp" alt="คืนสู่เหย้าศิษย์เก่า การอาชีพพนมไพร ครั้งที่ 2" width="480" height="270"><span>30 ปี แห่งความผูกพัน</span><h1>พลังศิษย์เก่า เพื่ออนาคตรุ่นน้อง</h1><p>คืนสู่เหย้า การอาชีพพนมไพร ครั้งที่ 2</p></div>
-    <div class="totals-grand"><span>ยอดรวมทั้ง 4 ประเภท</span><strong id="totals-grand-value">—</strong><span class="totals-unit">บาท</span></div>
+    <div class="totals-title"><img class="totals-event-logo" src="assets/totals/event-logo-cutout-v1.webp" alt="คืนสู่เหย้าศิษย์เก่า การอาชีพพนมไพร ครั้งที่ 2" width="480" height="270"><h1>ขอบคุณทุกน้ำใจ ที่ร่วมสร้างอนาคตให้น้อง ๆ</h1><p>คืนสู่เหย้า การอาชีพพนมไพร ครั้งที่ 2</p></div>
+    <div class="totals-grand"><span>ยอดรวม</span><strong id="totals-grand-value">—</strong><span class="totals-unit">บาท</span></div>
     <div class="totals-categories">${categories.map(([key,n,title,icon])=>`<article class="totals-category totals-${key}"><div class="totals-category-top"><span>${n}</span><span aria-hidden="true">${icon}</span></div><h2>${title}</h2><div><strong id="totals-${key}-value">—</strong><small>บาท</small></div></article>`).join('')}</div>
     <div class="totals-foot"><span>เฉพาะยอดที่ตรวจสอบและยืนยันแล้ว</span><span id="totals-update" role="status">กำลังโหลดข้อมูล…</span><button type="button" class="totals-refresh">↻ อัปเดตยอด</button></div>
   </section>`;
