@@ -14,6 +14,12 @@ try {
  }
  if(str_starts_with($path,'/api/admin/')&&$path!=='/api/admin/login')auth();
  if($method==='GET'){
+    if(in_array($path,['/api/admin/reports','/api/admin/report.csv'],true)){
+       require dirname(getenv('PORTAL_LIB') ?: dirname(__DIR__).'/portal-private/lib.php').'/reports.php';$filters=report_filters($_GET);
+       if($path==='/api/admin/report.csv')export_report_csv($filters,text($_GET['dataset']??'summary',1,30,'รายงาน'));
+       reply(200,report_summary($filters));
+    }
+
     if($path==='/api/totals'){
        $totals=array_fill_keys(['donate','fund','tables','shirts'],0);
        foreach(query("SELECT type,COALESCE(SUM(amount_cents),0) AS cents FROM orders WHERE status='confirmed' GROUP BY type")->fetchAll() as $r){if(array_key_exists($r['type'],$totals))$totals[$r['type']]=(int)$r['cents'];}

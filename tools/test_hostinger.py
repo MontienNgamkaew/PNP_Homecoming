@@ -333,4 +333,41 @@ class Hostinger(unittest.TestCase):
     self.assertEqual(compare()['name'],'ชื่อแก้ไข ล่าสุด')
     self.assertEqual(self.post('/api/admin/redeem',{'ref':ref})[0],200);self.assertTrue(compare()['redeemed'])
   self.assertEqual(self.request('/api/admin/ticket?ref=missing',cookie=self.cookie)[0],404)
+ def test_22_reports_and_csv_exports(self):
+  import csv,io,datetime
+  self.assertEqual(self.request('/api/admin/reports')[0],401)
+  self.assertEqual(self.request('/api/admin/report.csv')[0],401)
+  start=int(datetime.datetime(2020,1,1,17,tzinfo=datetime.timezone.utc).timestamp());refs=[]
+  cases=[('transfer','shirts','947','confirmed',{'lines':[{'size':'XS','qty':1},{'size':'M','qty':2}],'delivery':'post','recipient':'ผู้รับทดสอบ','address':'ที่อยู่ทดสอบ 123','postcode':'45140'}),('cash','shirts','1196','confirmed',{'lines':[{'size':'M','qty':1},{'size':'M','qty':2},{'size':'4XL','qty':1}],'delivery':'pickup'}),('transfer','shirts','1495','pending',{'lines':[{'size':'L','qty':5}],'delivery':'pickup'}),('transfer','shirts','2093','rejected',{'lines':[{'size':'XL','qty':7}],'delivery':'pickup'}),('cash','donate','10.25','confirmed',{}),('transfer','fund','20.50','confirmed',{}),('cash','tables','2500','confirmed',{'tables':[58]})]
+  for index,(method,kind,amount,status,extra) in enumerate(cases):
+   data=self.payload(type=kind,name='=1+1' if index==1 else 'ผู้จอง ชื่อซ้ำ',amount=amount,**extra)
+   if method=='cash':data.update(request_id=uuid.uuid4().hex,collector='รับเงิน ทดสอบ',received_date='2020-01-02');code,r,_=self.post('/api/admin/cash-receipt',data);self.assertEqual(code,200,r)
+   else:code,r,_=self.request('/api/orders',data);self.assertEqual(code,201,r)
+   ref=r['ref'];refs.append(ref)
+   if status!='pending':self.assertEqual(self.post('/api/admin/order-status',{'ref':ref,'status':status})[0],200)
+   self.sql("UPDATE orders SET created="+str(start+(86399 if index==1 else 0))+" WHERE ref='"+ref+"'",self.name)
+  params='?from=2020-01-02&to=2020-01-02'
+  code,d,_=self.request('/api/admin/reports'+params,cookie=self.cookie);self.assertEqual(code,200,d)
+  self.assertEqual(d['order_count'],5);self.assertEqual(d['shirt_qty'],7);self.assertEqual(d['table_count'],1);self.assertEqual(d['guests'],8)
+  self.assertEqual(d['total_cents'],467375);sizes={r['size']:r for r in d['shirt_sizes']};self.assertEqual(sizes['M'],dict(size='M',qty=5,pickup=3,post=2));self.assertEqual(sizes['L']['qty'],0)
+  self.assertEqual(self.request('/api/admin/reports'+params+'&status=active',cookie=self.cookie)[1]['shirt_qty'],12)
+  self.assertEqual(self.request('/api/admin/reports'+params+'&payment=cash',cookie=self.cookie)[1]['shirt_qty'],4)
+  self.assertEqual(self.request('/api/admin/reports?from=2020-01-03&to=2020-01-03',cookie=self.cookie)[1]['order_count'],0)
+  def exported(dataset):
+   code,raw,h=self.request('/api/admin/report.csv'+params+'&dataset='+dataset,cookie=self.cookie);self.assertEqual(code,200,raw);self.assertTrue(raw.startswith(b'\xef\xbb\xbf'));self.assertIn('attachment',h['Content-Disposition']);return list(csv.reader(io.StringIO(raw.decode('utf-8-sig'))))
+  rows=exported('shirt-sizes');self.assertEqual(rows[-1],['รวม','4','3','7'])
+  people=exported('shirt-people');self.assertEqual(len(people),3);self.assertEqual(sum(int(r[10]) for r in people[1:]),7);self.assertTrue(any(r[1]=="'=1+1" for r in people[1:]))
+  lines=exported('shirt-lines');self.assertEqual(len(lines),5);self.assertEqual(sum(int(r[3]) for r in lines[1:]),7)
+  self.assertEqual(exported('summary')[-1][1:3],['5','4673.75']);orders=exported('orders');self.assertEqual(len(orders),6);self.assertTrue(any('G6'==r[8] for r in orders[1:]))
+  for rows in [people,lines,orders]:
+   text=json.dumps(rows,ensure_ascii=False);self.assertNotIn('0812345678',text);self.assertNotIn('45140',text);self.assertNotIn('secret_hash',text)
+  self.assertEqual(self.request('/api/admin/reports?status=bad',cookie=self.cookie)[0],400)
+  self.assertEqual(self.request('/api/admin/reports?from=2020-02-31',cookie=self.cookie)[0],400)
+  self.assertEqual(self.request('/api/admin/reports?from=2020-02-03&to=2020-01-01',cookie=self.cookie)[0],400)
+  self.assertEqual(self.request('/api/admin/report.csv?dataset=bad',cookie=self.cookie)[0],400)
+  import hashlib
+  values=','.join("('report-%d','%s','donate','ทดสอบรายงาน','0800000000',100,'2020-01-02','%s','text/plain','','confirmed',%d,'{}')"%(n,'0'*64,hashlib.sha256(('report-fixture-'+str(n)).encode()).hexdigest(),start) for n in range(150))
+  self.sql('INSERT INTO orders(ref,secret_hash,type,name,phone,amount_cents,transferred,digest,mime,slip,status,created,pricing_snapshot) VALUES '+values,self.name)
+  self.assertEqual(len(exported('orders')),156)
+
 if __name__=='__main__':unittest.main(verbosity=2)

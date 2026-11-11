@@ -429,7 +429,7 @@ async function admin() {
   if (tab === 'overview') { adminCategory=''; adminPaymentStatus=''; adminSearch=''; adminPage=1; }
   app.innerHTML = head('ภาพรวมผู้ดูแล', 'ระบบจัดการรายการจองและตรวจสอบสลิปจริง') + `
     <div class="tabs">
-      ${[['overview', 'ภาพรวม'], ['cash', 'บันทึกรับเงินสด'], ['orders', 'รายการทั้งหมด (' + adminOrders.length + ')'], ['blessings', 'คำอวยพร (' + adminBlessings.length + ')'], ['posters', 'โปสเตอร์'], ['hero', 'ข้อความแบนเนอร์'], ['settings', 'ตั้งค่าเว็บไซต์']].map(([v, t]) => `
+      ${[['overview', 'ภาพรวม'], ['cash', 'บันทึกรับเงินสด'], ['reports', 'รายงาน / CSV'], ['orders', 'รายการทั้งหมด (' + adminOrders.length + ')'], ['blessings', 'คำอวยพร (' + adminBlessings.length + ')'], ['posters', 'โปสเตอร์'], ['hero', 'ข้อความแบนเนอร์'], ['settings', 'ตั้งค่าเว็บไซต์']].map(([v, t]) => `
         <button class="ui-btn ui-btn-sm ${tab === v ? 'ui-btn-primary' : 'ui-btn-ghost'}" data-admin-tab="${v}" onclick="tab='${v}';admin()">${t}</button>
       `).join('')}
     </div>
@@ -586,6 +586,8 @@ async function admin() {
     renderPosterAdmin(body);
     return;
   }
+
+  if (tab === 'reports') { renderReportsAdmin(body); return; }
 
   if (tab === 'cash') { renderCashAdmin(body); return; }
 
