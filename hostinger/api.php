@@ -15,6 +15,7 @@ try {
  }
  if(str_starts_with($path,'/api/admin/')&&$path!=='/api/admin/login')auth();
  if($method==='GET'){
+    if($path==='/api/admin/tax-requests.csv')export_tax_requests_csv($_GET);
     if($path==='/api/admin/tax-requests')reply(200,tax_requests_list($_GET));
     if($path==='/api/admin/tax-request')reply(200,tax_request_detail(text($_GET['ref']??null,1,40,'เลขอ้างอิง')));
     if(in_array($path,['/api/admin/reports','/api/admin/report.csv'],true)){

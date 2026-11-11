@@ -429,4 +429,28 @@ class Hostinger(unittest.TestCase):
    restored=subprocess.run(['php',str(ROOT/'hostinger/restore.php'),str(backup),'--confirm-empty'],env={**self.env,'PORTAL_CONFIG':str(config)},capture_output=True);self.assertEqual(restored.returncode,0,restored.stderr)
    self.assertEqual(self.sql("SELECT tax_id FROM tax_requests WHERE order_ref='"+r['ref']+"'",target).strip(),tax['tax_id'])
   finally:self.sql('DROP DATABASE '+target)
+ def test_26_tax_csv_exports(self):
+  import csv,io,urllib.parse
+  tax={'requested':True,'tax_id':'0000000000000','document_name':'=SUM(1,2)','delivery':'post','recipient':'ผู้รับทดสอบ','address':'บ้านเลขที่ 1, อาคาร "ทดสอบ"\nถนนตัวอย่าง','postcode':'00123'}
+  code,o,_=self.request('/api/orders',self.payload(type='donate',amount='123.45',tax_request=tax));self.assertEqual(code,201,o);ref=o['ref']
+  code,cash,_=self.post('/api/admin/cash-receipt',self.payload(type='fund',amount='50',request_id=uuid.uuid4().hex,collector='ผู้รับเงินทดสอบ',received_date='2026-11-11',tax_request={**tax,'document_name':'ผู้รับเอกสารเงินสด','delivery':'line','line_id':'@test.line'}));self.assertEqual(code,200,cash)
+  self.assertEqual(self.post('/api/admin/order-status',{'ref':ref,'status':'confirmed'})[0],200)
+  self.assertEqual(self.request('/api/admin/tax-requests.csv')[0],401)
+  def export(query=''):
+   code,body,headers=self.request('/api/admin/tax-requests.csv?'+query,cookie=self.cookie);self.assertEqual(code,200,body);self.assertIn('text/csv',headers['Content-Type']);self.assertIn('no-store',headers['Cache-Control']);self.assertTrue(body.startswith(b'\xef\xbb\xbf'));return list(csv.DictReader(io.StringIO(body.decode('utf-8-sig'))))
+  rows=export('q='+ref+'&page=999');self.assertEqual(len(rows),1);r=rows[0]
+  self.assertEqual(r['เลขประจำตัวผู้เสียภาษี'],'0000000000000');self.assertEqual(r['เบอร์โทรศัพท์'],'0812345678');self.assertEqual(r['รหัสไปรษณีย์'],'00123');self.assertEqual(r['ชื่อสำหรับออกเอกสาร'],"'=SUM(1,2)");self.assertEqual(r['ที่อยู่รับเอกสาร'],tax['address']);self.assertEqual(r['ยอดบริจาค (บาท)'],'123.45');self.assertEqual(r['สถานะยืนยันยอดเงิน'],'ยืนยันยอดแล้ว')
+  rows=export('q='+cash['ref']);self.assertEqual(rows[0]['ช่องทางชำระ'],'เงินสด');self.assertEqual(rows[0]['วันที่รับเงิน / แจ้งโอน'],'2026-11-11');self.assertEqual(rows[0]['Line ID'],"'@test.line")
+  rows=export('dataset=summary&q='+ref+'&payment_status=confirmed');self.assertEqual(len(rows),1);self.assertEqual(rows[0]['จำนวนคำขอ'],'1');self.assertEqual(rows[0]['ยอดรวม (บาท)'],'123.45');self.assertNotIn(tax['tax_id'],json.dumps(rows));self.assertEqual(export('q='+ref+'&payment_status=pending'),[])
+  filtered=self.request('/api/admin/tax-requests?payment_status=confirmed&q='+ref,cookie=self.cookie)[1];self.assertEqual(filtered['count'],1)
+  for query in ['dataset=unknown','payment_status=unknown','delivery=unknown']:
+   self.assertEqual(self.request('/api/admin/tax-requests.csv?'+query,cookie=self.cookie)[0],400)
+  # More than one list page: exports must include all matching requests, not 50.
+  columns='ref,secret_hash,type,name,phone,amount_cents,transferred,digest,mime,slip,status,created,pricing_snapshot'
+  for n in range(51):
+   cloned=str(900000+n)
+   self.sql("INSERT INTO orders ("+columns+") SELECT '"+cloned+"',secret_hash,type,'csv-bulk',phone,amount_cents,transferred,SHA2('csv-bulk-"+cloned+"',256),mime,slip,status,created,pricing_snapshot FROM orders WHERE ref='"+ref+"'; INSERT INTO tax_requests (order_ref,tax_id,document_name,delivery,request_status,admin_note,revision,created,updated) SELECT '"+cloned+"',tax_id,'csv-bulk',delivery,request_status,admin_note,revision,created,updated FROM tax_requests WHERE order_ref='"+ref+"';",self.name)
+  self.assertEqual(len(export('q=csv-bulk&page=2')),51)
+  self.assertEqual(self.request('/api/admin/tax-requests?q=csv-bulk',cookie=self.cookie)[1]['count'],51)
+  rows=export('dataset=summary&q=csv-bulk');self.assertEqual(rows[0]['จำนวนคำขอ'],'51');self.assertEqual(rows[0]['ยอดรวม (บาท)'],'6295.95')
 if __name__=='__main__':unittest.main(verbosity=2)
