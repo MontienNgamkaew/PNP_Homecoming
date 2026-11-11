@@ -597,7 +597,7 @@ async function admin() {
           <label>วันที่จัดงาน<input class="ui-input ui-input-bordered" name="event" required value="${esc(settings.event)}"></label>
           <fieldset class="shirt-image-settings"><legend>ภาพเสื้อที่ระลึก</legend>
             <img id="shirt-image-preview" src="${esc(settings.shirt_image || 'assets/shirt.png')}" alt="ภาพเสื้อที่ใช้งาน" style="width:100%;max-width:440px;border-radius:12px;margin:12px 0">
-            <label>เปลี่ยนภาพเสื้อ<input class="ui-file-input ui-file-input-bordered" id="shirt-image-file" type="file" accept="image/png,image/jpeg,image/webp"><small class="muted">JPG, PNG หรือ WebP ไม่เกิน 1 MB · แสดงทั้งหน้าหลักและหน้าจองเสื้อ</small></label>
+            <label>เปลี่ยนภาพเสื้อ<input class="ui-file-input ui-file-input-bordered" id="shirt-image-file" type="file" accept="image/png,image/jpeg,image/webp"><small class="muted">JPG, PNG หรือ WebP · บีบอัดภาพเกิน 1 MB อัตโนมัติ · ต้นฉบับไม่เกิน 30 MB · แสดงทั้งหน้าหลักและหน้าจองเสื้อ</small></label>
             <p id="shirt-image-error" role="status" class="muted"></p>
             <button type="button" id="shirt-image-reset" class="btn ui-btn">ใช้ภาพเสื้อเดิมของเว็บไซต์</button>
           </fieldset>
@@ -613,15 +613,16 @@ async function admin() {
     const shirtInput = $('#shirt-image-file');
     shirtInput.onchange = async () => {
       const file = shirtInput.files[0]; if (!file) return;
-      shirtImageBusy = true;
+      shirtImageBusy = true; shirtInput.disabled=true;
       try {
-        if (!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size > 1024*1024) throw new Error('กรุณาเลือก JPG, PNG หรือ WebP ไม่เกิน 1 MB');
-        const image = await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('อ่านภาพไม่สำเร็จ'));reader.readAsDataURL(file);});
-        await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>img.width*img.height<=40000000?resolve():reject(new Error('ภาพมีขนาดใหญ่เกินไป'));img.onerror=()=>reject(new Error('ไฟล์ภาพไม่ถูกต้อง'));img.src=image;});
-        pendingShirtImage = image; $('#shirt-image-preview').src = image;
-        $('#shirt-image-error').textContent = 'ภาพพร้อมใช้งาน · กดบันทึกการตั้งค่าเพื่อยืนยัน';
+        $('#shirt-image-error').textContent = 'กำลังเตรียมและบีบอัดภาพ…';
+        const prepared = await prepareShirtImage(file);
+        pendingShirtImage = prepared.data; $('#shirt-image-preview').src = prepared.data;
+        const originalSize = (file.size/1024/1024).toLocaleString('th-TH',{maximumFractionDigits:2});
+        const savedSize = Math.ceil(prepared.bytes/1024).toLocaleString('th-TH');
+        $('#shirt-image-error').textContent = (prepared.compressed ? `บีบอัดแล้ว ${originalSize} MB → ${savedSize} KB` : `ภาพพร้อมใช้งาน ${savedSize} KB`) + ' · กดบันทึกการตั้งค่าเพื่อยืนยัน';
       } catch(error) {shirtInput.value='';$('#shirt-image-error').textContent=error.message;}
-      finally {shirtImageBusy=false;}
+      finally {shirtImageBusy=false;shirtInput.disabled=false;}
     };
     $('#shirt-image-reset').onclick = () => {if(shirtImageBusy)return;pendingShirtImage='';shirtInput.value='';$('#shirt-image-preview').src='assets/shirt.png';$('#shirt-image-error').textContent='กดบันทึกการตั้งค่าเพื่อกลับไปใช้ภาพเดิม';};
     $('#settings').onsubmit = async e => {
