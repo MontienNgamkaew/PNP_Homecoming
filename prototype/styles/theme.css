@@ -429,3 +429,16 @@ body.blessing-open{overflow:hidden}
 .admin-icon-action:focus-visible{outline:3px solid #d6ad51;outline-offset:2px}
 .admin-icon-action:disabled{opacity:.32;cursor:default;background:#f2f4f6}
 .admin-payment-cell>.ui-badge{display:table;margin-bottom:8px}.admin-payment-cell>select{display:block;min-width:145px}
+.admin-icon-action.action-print{color:#225d87}
+.admin-ticket-controls{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+#admin-ticket-preview .electronic-ticket-image{max-width:500px;margin-inline:auto}
+@media print{
+ @page{size:A4;margin:10mm}
+ body:has(#admin-ticket-preview){padding:0!important;background:white!important}
+ body:has(#admin-ticket-preview)>*:not(#modal){display:none!important}
+ body:has(#admin-ticket-preview) #modal{display:block!important;position:static!important;padding:0!important;background:white!important;overflow:visible!important}
+ body:has(#admin-ticket-preview) .modal-content{width:100%!important;max-width:none!important;max-height:none!important;padding:0!important;box-shadow:none!important;border:0!important;overflow:visible!important;background:white!important}
+ body:has(#admin-ticket-preview) .remove, #admin-ticket-preview>h2,#admin-ticket-preview>p,#admin-ticket-preview>.admin-ticket-controls{display:none!important}
+ #admin-ticket-preview .electronic-ticket-image{display:block;width:auto!important;max-width:100%!important;max-height:260mm!important;height:auto!important;object-fit:contain;margin:0 auto!important;border:0!important;border-radius:0!important;break-inside:avoid}
+ #admin-ticket-preview[data-ready=false]{display:none!important}
+}

@@ -136,3 +136,20 @@ function order_search(): array {
 function quantities(array $items): array {$r=[];foreach($items as $it)$r[$it['size']]=($r[$it['size']]??0)+(int)$it['qty'];ksort($r);return $r;}
 function payment_receipt(array $r): ?array {return (json_decode($r['pricing_snapshot']??'{}',true)?:[])['payment_receipt']??null;}
 function public_order(array $r): array {$receipt=payment_receipt($r);$r['payment_method']=$receipt?'cash':'transfer';if($receipt){unset($receipt['request_id']);$r['cash_receipt']=$receipt;}$r['has_slip']=!empty($r['mime'])&&$r['mime']!=='text/plain';unset($r['secret_hash'],$r['digest'],$r['slip'],$r['mime']);$r['amount_cents']=(int)$r['amount_cents'];$r['created']=(int)$r['created'];if($r['type']==='shirts')$r['items']=order_items($r['ref']);return $r;}
+
+// Both the booking holder and staff render this exact canonical ticket payload.
+function electronic_ticket(string $ref,?string $token=null): array {
+ return transaction(function()use($ref,$token){
+  $config=settings(true);$args=[$ref];$where='ref=?';if($token!==null){$where.=' AND secret_hash=?';$args[]=hash('sha256',$token);}
+  $r=query('SELECT ref,type,name,status,amount_cents,tables_list,delivery_method,recipient_name,created FROM orders WHERE '.$where,$args)->fetch();
+  if(!$r||!in_array($r['type'],['tables','shirts'],true))fail(404,'ไม่พบตั๋ว หรือรหัสติดตามไม่ถูกต้อง');
+  $labels=['pending'=>'รอตรวจสอบ','confirmed'=>'ยืนยันแล้ว','approved'=>'ตรวจสอบแล้ว','rejected'=>'ไม่ผ่านการตรวจสอบ'];
+  $out=['ref'=>$ref,'type'=>$r['type'],'name'=>$r['name'],'amount'=>$r['amount_cents']/100,'event'=>$config['event'],'venue'=>'วิทยาลัยการอาชีพพนมไพร','status'=>$r['status'],'label'=>$labels[$r['status']]??$r['status']];
+  if($r['type']==='tables'){$tables=array_map('intval',array_filter(explode(',',$r['tables_list'])));$out+=['tables'=>$tables,'guests'=>count($tables)*8,'admission_valid'=>$r['status']==='confirmed'];}
+  else{$items=order_items($ref);$out+=['items'=>$items,'total_qty'=>array_sum(array_column($items,'qty')),'delivery_method'=>$r['delivery_method'],'recipient_name'=>$r['delivery_method']==='post'?$r['recipient_name']:null,'payment_confirmed'=>$r['status']==='confirmed','collection_valid'=>$r['status']==='confirmed'&&$r['delivery_method']==='pickup'];}
+  $redeemed=query('SELECT redeemed FROM ticket_redemptions WHERE ref=?',[$ref])->fetchColumn();$out['redeemed']=$redeemed!==false;
+  if($out['redeemed']){$out['admission_valid']=false;$out['collection_valid']=false;$out['label']='ใช้ตั๋วแล้ว';}
+  $out['updated_at']=max((int)$r['created'],(int)query('SELECT MAX(at) FROM order_audit WHERE ref=?',[$ref])->fetchColumn(),(int)$redeemed);
+  return $out;
+ });
+}

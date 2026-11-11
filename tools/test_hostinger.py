@@ -307,4 +307,30 @@ class Hostinger(unittest.TestCase):
    self.assertTrue(headers['Content-Disposition'].startswith('inline;'))
    self.assertEqual(headers['Content-Type'],mime);self.assertEqual(headers['Cache-Control'],'no-store')
    self.assertEqual(headers['X-Frame-Options'],'DENY')
+ def test_21_admin_latest_ticket_matches_holder(self):
+  self.assertEqual(self.request('/api/admin/ticket?ref=100000')[0],401)
+  for payment in ['cash','transfer']:
+   for kind in ['tables','shirts']:
+    extra={'tables':[55 if payment=='cash' else 56]} if kind=='tables' else {'lines':[{'size':'L','qty':2}],'delivery':'pickup'}
+    data=self.payload(type=kind,amount='2500' if kind=='tables' else '598',**extra)
+    if payment=='cash':
+     data.update(request_id=uuid.uuid4().hex,collector='ผู้รับเงินทดสอบ',received_date='2026-01-01');code,order,_=self.post('/api/admin/cash-receipt',data);self.assertEqual(code,200,order)
+     token=self.post('/api/admin/ticket-reissue',dict(ref=order['ref'],verified=True,reason='มอบตั๋วผู้จอง'))[1]['token']
+    else:
+     code,order,_=self.request('/api/orders',data);self.assertEqual(code,201,order);token=order['token']
+    ref=order['ref'];self.assertEqual(self.post('/api/admin/order-status',dict(ref=ref,status='confirmed'))[0],200)
+    hash_before=self.sql("SELECT secret_hash FROM orders WHERE ref='"+ref+"'",self.name)
+    audit_before=self.sql("SELECT COUNT(*) FROM order_audit WHERE ref='"+ref+"'",self.name)
+    def compare():
+     code,staff,_=self.request('/api/admin/ticket?ref='+ref,cookie=self.cookie);self.assertEqual(code,200,staff)
+     code,holder,_=self.request('/api/ticket',{'ref':ref,'token':token});self.assertEqual(code,200,holder);self.assertEqual(staff,holder)
+     for private in ['token','secret_hash','phone','shipping_address','cash_receipt']:self.assertNotIn(private,staff)
+     return staff
+    self.assertEqual(compare()['status'],'confirmed')
+    self.assertEqual(self.sql("SELECT secret_hash FROM orders WHERE ref='"+ref+"'",self.name),hash_before)
+    self.assertEqual(self.sql("SELECT COUNT(*) FROM order_audit WHERE ref='"+ref+"'",self.name),audit_before)
+    edit={**data,'ref':ref,'name':'ชื่อแก้ไข ล่าสุด','reason':'แก้ชื่อผู้จอง'};self.assertEqual(self.post('/api/admin/order-edit',edit)[0],200)
+    self.assertEqual(compare()['name'],'ชื่อแก้ไข ล่าสุด')
+    self.assertEqual(self.post('/api/admin/redeem',{'ref':ref})[0],200);self.assertTrue(compare()['redeemed'])
+  self.assertEqual(self.request('/api/admin/ticket?ref=missing',cookie=self.cookie)[0],404)
 if __name__=='__main__':unittest.main(verbosity=2)

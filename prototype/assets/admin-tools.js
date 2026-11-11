@@ -7,6 +7,7 @@ function renderAdminPager() {
 const adminActionIcons={
  preview:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
  edit:'<path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15l-1 6Z"/>',
+ print:'<path d="M6 9V3h12v6M6 17H3V9h18v8h-3"/><path d="M6 14h12v7H6Z"/><path d="M17 12h1"/>',
  ticket:'<path d="M3 5h18v5a2 2 0 0 0 0 4v5H3v-5a2 2 0 0 0 0-4Z"/><path d="M15 5v3m0 3v2m0 3v3"/>',
  cash:'<rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v4m12-4v4"/>'
 };
@@ -24,6 +25,7 @@ function renderAdminOrderList(body){
     else detail=esc(o.category||title);
     const badge=o.status==='confirmed'?'ui-badge-success':o.status==='rejected'?'ui-badge-error':'ui-badge-warning';
     const actions=adminActionButton('data-slip-preview',o.ref,o.has_slip===false?'ไม่มีเอกสารแนบ':'ดูสลิป / เอกสาร','preview',o.has_slip===false)
+      +(['tables','shirts'].includes(o.type)&&settings.backend==='php'?adminActionButton('data-admin-ticket',o.ref,'ดู / พิมพ์ E-Ticket ฉบับปัจจุบัน','print'):'')
       +(['tables','shirts'].includes(o.type)&&o.status!=='rejected'?adminActionButton('data-reissue-ticket',o.ref,'ออกลิงก์ตั๋วใหม่','ticket'):'')
       +(o.payment_method==='cash'?adminActionButton('data-cash-edit',o.ref,'แก้ไขข้อมูลรับเงินสด','cash'):'')
       +(settings.backend==='php'?adminActionButton('data-edit-order',o.ref,'แก้ไขข้อมูล','edit'):'');

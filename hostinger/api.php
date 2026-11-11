@@ -26,6 +26,7 @@ try {
     if(preg_match('~^/api/posters/([a-zA-Z0-9-]+)/image$~D',$path,$m)){$r=query('SELECT mime,image FROM posters WHERE id=? AND deleted_at IS NULL',[$m[1]])->fetch();if(!$r)fail(404,'ไม่พบโปสเตอร์');reply(200,$r['image'],$r['mime']);}
     if($path==='/api/tables'){$rows=query('SELECT table_number,status FROM table_bookings')->fetchAll();$booked=[];$pending=0;$confirmed=0;foreach($rows as $r){$booked[(string)$r['table_number']]=$r['status'];$pending+=$r['status']==='pending';$confirmed+=$r['status']==='confirmed';}reply(200,['booked'=>(object)$booked,'summary'=>['total'=>61,'available'=>61-count(array_filter($rows,fn($r)=>(int)$r['table_number']<=61)),'pending'=>$pending,'confirmed'=>$confirmed]]);}
     if($path==='/api/blessings/random')reply(200,['blessing'=>query('SELECT message FROM blessings WHERE active=1 ORDER BY RAND() LIMIT 1')->fetchColumn()?:'ขอให้ท่านและครอบครัวมีความสุขความเจริญ']);
+    if($path==='/api/admin/ticket'){reply(200,electronic_ticket(text($_GET['ref']??null,1,40,'เลขอ้างอิง')));}
     if($path==='/api/admin/cash-order'){$ref=text($_GET['ref']??null,6,40,'เลขอ้างอิง');$r=query('SELECT * FROM orders WHERE ref=?',[$ref])->fetch();if(!$r)fail(404,'ไม่พบรายการ');reply(200,public_order($r));}
     if($path==='/api/admin/blessings'){$rows=query('SELECT * FROM blessings ORDER BY id')->fetchAll();foreach($rows as &$r){$r['id']=(int)$r['id'];$r['active']=(int)$r['active'];}reply(200,$rows);}
     if($path==='/api/admin/orders'){
@@ -73,14 +74,10 @@ try {
     reply(200,['ref'=>$ref,'type'=>$r['type'],'amount'=>$r['amount_cents']/100,'status'=>$r['status'],'label'=>$labels[$r['status']]??$r['status']]);
  }
  if(in_array($path,['/api/status','/api/ticket'],true)){
-    limited('lookup',60);$ref=text($d['ref']??null,1,40,'เลขอ้างอิง');$token=text($d['token']??null,1,200,'รหัสติดตาม');$r=query('SELECT ref,type,name,status,amount_cents,tables_list,delivery_method,recipient_name FROM orders WHERE ref=? AND secret_hash=?',[$ref,hash('sha256',$token)])->fetch();if(!$r)fail(404,'เลขอ้างอิงหรือรหัสติดตามไม่ถูกต้อง');
-    $labels=['pending'=>'รอตรวจสอบ','confirmed'=>'ยืนยันแล้ว','approved'=>'ตรวจสอบแล้ว','rejected'=>'ไม่ผ่านการตรวจสอบ'];$label=$labels[$r['status']]??$r['status'];
-    if($path==='/api/status')reply(200,['status'=>$r['status'],'label'=>$label]);
-    if(!in_array($r['type'],['tables','shirts'],true))fail(404,'ไม่พบตั๋ว');
-    $out=['ref'=>$ref,'type'=>$r['type'],'name'=>$r['name'],'amount'=>$r['amount_cents']/100,'event'=>settings()['event'],'venue'=>'วิทยาลัยการอาชีพพนมไพร','status'=>$r['status'],'label'=>$label];
-    if($r['type']==='tables'){$tables=array_map('intval',array_filter(explode(',',$r['tables_list'])));$out+=['tables'=>$tables,'guests'=>count($tables)*8,'admission_valid'=>$r['status']==='confirmed'];}
-    else{$items=order_items($ref);$out+=['items'=>$items,'total_qty'=>array_sum(array_column($items,'qty')),'delivery_method'=>$r['delivery_method'],'recipient_name'=>$r['delivery_method']==='post'?$r['recipient_name']:null,'payment_confirmed'=>$r['status']==='confirmed','collection_valid'=>$r['status']==='confirmed'&&$r['delivery_method']==='pickup'];}
-    $out['redeemed']=(bool)query('SELECT ref FROM ticket_redemptions WHERE ref=?',[$ref])->fetch();if($out['redeemed']){$out['admission_valid']=false;$out['collection_valid']=false;$out['label']='ใช้ตั๋วแล้ว';}reply(200,$out);
+    limited('lookup',60);$ref=text($d['ref']??null,1,40,'เลขอ้างอิง');$token=text($d['token']??null,1,200,'รหัสติดตาม');
+    if($path==='/api/ticket')reply(200,electronic_ticket($ref,$token));
+    $r=query('SELECT status FROM orders WHERE ref=? AND secret_hash=?',[$ref,hash('sha256',$token)])->fetch();if(!$r)fail(404,'เลขอ้างอิงหรือรหัสติดตามไม่ถูกต้อง');
+    $labels=['pending'=>'รอตรวจสอบ','confirmed'=>'ยืนยันแล้ว','approved'=>'ตรวจสอบแล้ว','rejected'=>'ไม่ผ่านการตรวจสอบ'];reply(200,['status'=>$r['status'],'label'=>$labels[$r['status']]??$r['status']]);
  }
  if($path==='/api/orders'){
     limited('orders',15);if(!empty($d['website']))fail(400,'ข้อมูลไม่ถูกต้อง');[$raw,$mime]=image_file($d['file']??null,5*1024*1024,true);$digest=hash('sha256',$raw);$token=bin2hex(random_bytes(32));

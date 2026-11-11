@@ -65,7 +65,7 @@ async function makeTicketCanvas(ticket) {
   ctx.strokeStyle='#d8c89a';ctx.setLineDash([12,12]);ctx.beginPath();ctx.moveTo(90,h-240);ctx.lineTo(990,h-240);ctx.stroke();ctx.setLineDash([]);
   text('กรุณาแสดงตั๋วให้เจ้าหน้าที่ตรวจเลขอ้างอิงและสถานะ',h-178,27,'#536c53');
   text(valid?'ตั๋วนี้อ้างอิงสถานะ ณ เวลาดาวน์โหลด':rejected?'กรุณาติดต่อผู้จัดงานเกี่ยวกับรายการนี้':'ดาวน์โหลดฉบับยืนยันได้เมื่อตรวจสลิปผ่านแล้ว',h-125,25,'#536c53');
-  text('ออกเมื่อ '+new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok'}),h-77,22,'#77856a');
+  text('ออกเมื่อ '+new Date(ticket.updated_at?ticket.updated_at*1000:Date.now()).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'}),h-77,22,'#77856a');
   return canvas;
 }
 async function showElectronicTicket(ref,token) {
@@ -147,7 +147,7 @@ function makeShirtTicketCanvas(ticket, background) {
   } else text(ticket.venue,y+110,28);
   ctx.strokeStyle='#d8c89a';ctx.setLineDash([10,10]);ctx.beginPath();ctx.moveTo(65,h-155);ctx.lineTo(835,h-155);ctx.stroke();ctx.setLineDash([]);
   text(post?'หลักฐานการสั่งเสื้อ · ไม่ใช่การยืนยันว่าส่งพัสดุแล้ว':'แสดงตั๋วให้เจ้าหน้าที่ตรวจรายการก่อนส่งมอบเสื้อ',h-110,25,'#536c53');
-  text('สถานะ ณ เวลาดาวน์โหลด · '+new Date().toLocaleDateString('th-TH',{timeZone:'Asia/Bangkok'}),h-67,23,'#77856a');
+  text('สถานะ ณ เวลาดาวน์โหลด · '+new Date(ticket.updated_at?ticket.updated_at*1000:Date.now()).toLocaleDateString('th-TH',{timeZone:'Asia/Bangkok'}),h-67,23,'#77856a');
   return canvas;
 }
 

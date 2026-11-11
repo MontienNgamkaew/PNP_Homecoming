@@ -332,6 +332,7 @@ function track() {
 }
 
 function modal(html) {
+  clearAdminTicket();
   clearSlipPreview();
   resetBlessingCard();
   $('#modal').removeAttribute('aria-labelledby');
@@ -340,7 +341,7 @@ function modal(html) {
   $('#modal').hidden = false;
   $('#modal').querySelector('button,input')?.focus();
 }
-function closeModal() { clearSlipPreview(); resetBlessingCard(); const root=$('#modal'); root.hidden=true; if(root.querySelector('#reissued-token, #slip-preview')) root.innerHTML=''; }
+function closeModal() { clearAdminTicket(); clearSlipPreview(); resetBlessingCard(); const root=$('#modal'); root.hidden=true; if(root.querySelector('#reissued-token, #slip-preview, #admin-ticket-preview')) root.innerHTML=''; }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 function showPoster() { showCurrentPoster(); }
 
@@ -494,6 +495,7 @@ async function admin() {
   body.addEventListener('change', event => {if(event.target.id==='admin-payment-status'){adminPaymentStatus=event.target.value;adminPage=1;tab='orders';admin();}});
   body.addEventListener('submit', event => { if(event.target.id==='admin-search'){event.preventDefault();adminSearch=event.target.elements.query.value.trim();adminPage=1;tab='orders';admin();} });
   body.addEventListener('click', event => {
+    const ticketPreview=event.target.closest('[data-admin-ticket]');if(ticketPreview)openAdminTicket(ticketPreview.dataset.adminTicket);
     const preview=event.target.closest('[data-slip-preview]');if(preview)openSlipPreview(preview.dataset.slipPreview,preview);
     const category=event.target.closest('[data-order-category]'); if(category){adminCategory=category.dataset.orderCategory;adminPage=1;tab='orders';admin();}
     const reissue=event.target.closest('[data-reissue-ticket]'); if(reissue)openTicketReissue(reissue.dataset.reissueTicket);
@@ -771,7 +773,7 @@ async function loadSettings() {
 async function route() {
   stopPosterCarousel();
   stopTotals();
-  if(document.querySelector('#slip-preview'))closeModal();
+  if(document.querySelector('#slip-preview, #admin-ticket-preview'))closeModal();
   const version = ++routeVersion;
   app.innerHTML = '<p class="muted" role="status">กำลังโหลดข้อมูลล่าสุด…</p>';
   try { await Promise.all([loadSettings(), loadPosters()]); } catch (error) {
