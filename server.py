@@ -217,13 +217,13 @@ def init():
         ''')
 
         for poster_id, title, filename in (
-            ('default-compact', 'คืนสู่เหย้าศิษย์เก่า ครั้งที่ 2', 'poster-compact-v1.png'),
-            ('default-celebration', 'ทอดผ้าป่าเพื่อการศึกษา ครบรอบ 30 ปี', 'poster-celebration-v2.png'),
+            ('default-compact', 'คืนสู่เหย้าศิษย์เก่า ครั้งที่ 2', 'poster-compact-v1.webp'),
+            ('default-celebration', 'ทอดผ้าป่าเพื่อการศึกษา ครบรอบ 30 ปี', 'poster-celebration-v2.webp'),
         ):
             image_path = ROOT / 'prototype' / 'assets' / filename
             if image_path.is_file():
                 c.execute('INSERT OR IGNORE INTO posters(id,title,mime,image,created) VALUES (?,?,?,?,?)',
-                          (poster_id,title,'image/png',image_path.read_bytes(),int(time.time())))
+                          (poster_id,title,'image/webp',image_path.read_bytes(),int(time.time())))
 
         c.execute('INSERT OR IGNORE INTO reference_counter VALUES (1,100000)')
 

@@ -37,20 +37,33 @@ function showCurrentPoster(){
   modal(`<img class="poster" src="${esc(slide.url)}" alt="${esc(slide.title)}">`);
 }
 function renderPosterAdmin(body){
-  body.innerHTML=`<section class="card ui-card"><h2>จัดการโปสเตอร์</h2><p class="muted">หน้าเว็บเปลี่ยนภาพทุก 5 วินาที · JPG, PNG, WebP ไม่เกิน 5 MB ต่อไฟล์</p><form id="poster-upload"><label>ชื่อโปสเตอร์<input class="ui-input w-full" name="title" required maxlength="150" placeholder="ชื่อสำหรับอธิบายภาพ"></label><label>ไฟล์โปสเตอร์<input class="ui-file-input w-full" name="image" type="file" required accept="image/jpeg,image/png,image/webp"></label><button type="submit" class="btn ui-btn ui-btn-primary full">เพิ่มโปสเตอร์</button><p id="poster-upload-result" class="muted" role="status"></p></form></section><div class="poster-admin-grid">${posterSlides.map(slide=>`<section class="card ui-card"><img src="${esc(slide.url)}" alt="${esc(slide.title)}"><h3>${esc(slide.title)}</h3><button type="button" class="btn ui-btn ui-btn-outline" data-delete-poster="${esc(slide.id)}">ลบโปสเตอร์</button></section>`).join('')||'<p class="muted">ยังไม่มีโปสเตอร์</p>'}</div>`;
+  body.innerHTML=`<section class="card ui-card"><h2>จัดการโปสเตอร์</h2><p class="muted">หน้าเว็บเปลี่ยนภาพทุก 5 วินาที · ย่อและบีบอัดอัตโนมัติไม่เกิน 600 KB · ต้นฉบับ JPG, PNG, WebP ไม่เกิน 30 MB</p><form id="poster-upload"><label>ชื่อโปสเตอร์<input class="ui-input w-full" name="title" required maxlength="150" placeholder="ชื่อสำหรับอธิบายภาพ"></label><label>ไฟล์โปสเตอร์<input class="ui-file-input w-full" name="image" type="file" required accept="image/jpeg,image/png,image/webp"></label><img id="poster-upload-preview" hidden alt="ตัวอย่างแบนเนอร์หลังบีบอัด" style="width:100%;max-height:320px;object-fit:contain;border-radius:12px;margin:12px 0"><button type="submit" class="btn ui-btn ui-btn-primary full">เพิ่มโปสเตอร์</button><p id="poster-upload-result" class="muted" role="status"></p></form></section><div class="poster-admin-grid">${posterSlides.map(slide=>`<section class="card ui-card"><img src="${esc(slide.url)}" alt="${esc(slide.title)}"><h3>${esc(slide.title)}</h3>${slide.bytes?`<p class="muted">${Math.ceil(slide.bytes/1024).toLocaleString('th-TH')} KB</p>`:''}<button type="button" class="btn ui-btn ui-btn-outline" data-delete-poster="${esc(slide.id)}">ลบโปสเตอร์</button></section>`).join('')||'<p class="muted">ยังไม่มีโปสเตอร์</p>'}</div>`;
+  let prepared=null,preparing=false,uploading=false;
+  const uploadForm=document.getElementById('poster-upload'),uploadInput=uploadForm.elements.image,uploadButton=uploadForm.querySelector('button[type=submit]');
+  async function prepare(){
+    const file=uploadInput.files[0];prepared=null;const preview=document.getElementById('poster-upload-preview'),status=document.getElementById('poster-upload-result');preview.hidden=true;
+    if(!file)return;
+    preparing=true;uploadButton.disabled=true;uploadInput.disabled=true;status.textContent='กำลังย่อและบีบอัดภาพ…';
+    try{prepared=await preparePosterImage(file);if(!status.isConnected)return;preview.src=prepared.data;preview.hidden=false;status.textContent=`${(file.size/1024/1024).toLocaleString('th-TH',{maximumFractionDigits:2})} MB → ${Math.ceil(prepared.bytes/1024).toLocaleString('th-TH')} KB · ${prepared.width} × ${prepared.height} พิกเซล · พร้อมอัปโหลด`;}
+    catch(error){if(status.isConnected)status.textContent=error.message;}
+    finally{preparing=false;if(uploadButton.isConnected)uploadButton.disabled=false;uploadInput.disabled=false;}
+  }
+  uploadInput.onchange=prepare;
   document.getElementById('poster-upload').onsubmit=async event=>{
     event.preventDefault();const form=event.target,button=form.querySelector('button'),status=document.getElementById('poster-upload-result');
     const file=form.elements.image.files[0];if(!file)return;
-    if(file.size>5*1024*1024){status.textContent='ไฟล์ใหญ่เกิน 5 MB กรุณาเลือกไฟล์ใหม่';return;}
-    button.disabled=true;
+    if(preparing||uploading)return;
+    if(!prepared||prepared.file!==file)await prepare();
+    if(!prepared)return;
+    uploading=true;button.disabled=true;uploadInput.disabled=true;
     try{
-      const fileData=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=reject;r.readAsDataURL(file);});
+      const fileData=prepared.data.split(',')[1];
       const response=await fetch('/api/admin/posters',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'add',title:form.elements.title.value,file:fileData})});
       const result=await response.json();if(!response.ok)throw new Error(result.error||'เพิ่มโปสเตอร์ไม่สำเร็จ');
       await loadPosters();renderPosterAdmin(body);
-      document.getElementById('poster-upload-result').textContent='เพิ่มโปสเตอร์และบันทึกลงฐานข้อมูลแล้ว';
+      document.getElementById('poster-upload-result').textContent='เพิ่มโปสเตอร์แล้ว · ขนาด '+Math.ceil((result.bytes||prepared.bytes)/1024).toLocaleString('th-TH')+' KB';
     }catch(error){status.textContent=error.message||'เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ';}
-    finally{button.disabled=false;}
+    finally{uploading=false;if(button.isConnected)button.disabled=false;uploadInput.disabled=false;}
   };
   body.querySelectorAll('[data-delete-poster]').forEach(button=>button.onclick=async()=>{
     button.disabled=true;

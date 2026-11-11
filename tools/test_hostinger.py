@@ -89,7 +89,7 @@ class Hostinger(unittest.TestCase):
  def test_05_real_images_limit_blessing_and_logout(self):
   raw=(ROOT/'prototype/assets/poster-compact-v1.png').read_bytes();encoded=base64.b64encode(raw).decode()
   status,p,_=self.post('/api/admin/posters',dict(action='add',title='ทดสอบโปสเตอร์',file=encoded));self.assertEqual(status,201,p)
-  self.assertEqual(self.request(p['url'])[1],raw)
+  code,compressed,headers=self.request(p['url']);self.assertEqual(code,200);self.assertLess(len(compressed),len(raw));self.assertLessEqual(len(compressed),600*1024);self.assertEqual(headers['Content-Type'],'image/webp')
   self.assertEqual(self.post('/api/admin/posters',dict(action='delete',id=p['id']))[0],200)
   self.assertEqual(self.request(p['url'])[0],404)
   self.assertEqual(self.post('/api/admin/posters',dict(action='add',title='ใหญ่เกิน',file=base64.b64encode(b'x'*(5*1024*1024+1)).decode()))[0],400)
@@ -370,4 +370,18 @@ class Hostinger(unittest.TestCase):
   self.sql('INSERT INTO orders(ref,secret_hash,type,name,phone,amount_cents,transferred,digest,mime,slip,status,created,pricing_snapshot) VALUES '+values,self.name)
   self.assertEqual(len(exported('orders')),156)
 
+ def test_23_poster_compression_cache_and_private_backup(self):
+  import hashlib
+  raw=(ROOT/'prototype/assets/poster-celebration-v2.png').read_bytes()
+  code,poster,_=self.post('/api/admin/posters',dict(action='add',title='บีบอัดโปสเตอร์',file=base64.b64encode(raw).decode()));self.assertEqual(code,201,poster);self.assertLessEqual(poster['bytes'],600*1024)
+  slides=self.request('/api/posters')[1];slide=next(p for p in slides if p['id']==poster['id']);self.assertIn('?v=',slide['url']);self.assertEqual(slide['bytes'],poster['bytes'])
+  code,image,headers=self.request(slide['url']);self.assertEqual(code,200);self.assertEqual(headers['Content-Type'],'image/webp');self.assertIn('immutable',headers['Cache-Control'])
+  conn=http.client.HTTPConnection('127.0.0.1',self.port);conn.request('GET',slide['url'],headers={'If-None-Match':headers['ETag']});response=conn.getresponse();self.assertEqual(response.status,304);self.assertEqual(response.read(),b'');conn.close()
+  id='legacy-large-poster';self.sql("INSERT INTO posters(id,title,mime,image,created) VALUES ('"+id+"','legacy','image/png',UNHEX('"+raw.hex()+"'),1)",self.name)
+  backup=self.folder/'poster-backup.json';before=self.sql('SELECT COUNT(*) FROM orders',self.name)
+  subprocess.run(['php',str(ROOT/'hostinger/optimize-posters.php'),str(backup)],env=self.env,check=True,capture_output=True)
+  saved=json.loads(backup.read_text());original=next(r for r in saved['posters'] if r['id']==id);self.assertEqual(base64.b64decode(original['image_base64']),raw);self.assertEqual(original['sha256'],hashlib.sha256(raw).hexdigest());self.assertEqual(backup.stat().st_mode&0o777,0o600)
+  code,image,h=self.request('/api/posters/'+id+'/image');self.assertEqual(h['Content-Type'],'image/webp');self.assertLess(len(image),len(raw));self.assertLessEqual(len(image),600*1024)
+  self.assertEqual(self.sql('SELECT COUNT(*) FROM orders',self.name),before)
+  repeat=subprocess.run(['php',str(ROOT/'hostinger/optimize-posters.php'),str(backup)],env=self.env,capture_output=True);self.assertNotEqual(repeat.returncode,0)
 if __name__=='__main__':unittest.main(verbosity=2)

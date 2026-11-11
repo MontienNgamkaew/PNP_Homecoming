@@ -28,8 +28,8 @@ try {
 
     if($path==='/api/settings/revision')reply(200,['revision'=>(int)query('SELECT revision FROM app_settings WHERE id=1')->fetchColumn()]);
     if($path==='/api/settings')reply(200,settings());
-    if($path==='/api/posters'){$rows=query('SELECT id,title FROM posters WHERE deleted_at IS NULL ORDER BY CASE id WHEN \'default-compact\' THEN 0 ELSE 1 END,created,id')->fetchAll();foreach($rows as &$r)$r['url']='/api/posters/'.$r['id'].'/image';reply(200,$rows);}
-    if(preg_match('~^/api/posters/([a-zA-Z0-9-]+)/image$~D',$path,$m)){$r=query('SELECT mime,image FROM posters WHERE id=? AND deleted_at IS NULL',[$m[1]])->fetch();if(!$r)fail(404,'ไม่พบโปสเตอร์');reply(200,$r['image'],$r['mime']);}
+    if($path==='/api/posters'){$rows=query('SELECT id,title,LENGTH(image) AS bytes,LEFT(SHA2(image,256),16) AS version FROM posters WHERE deleted_at IS NULL ORDER BY CASE id WHEN \'default-compact\' THEN 0 ELSE 1 END,created,id')->fetchAll();foreach($rows as &$r){$r['bytes']=(int)$r['bytes'];$r['url']='/api/posters/'.$r['id'].'/image?v='.$r['version'];unset($r['version']);}reply(200,$rows);}
+    if(preg_match('~^/api/posters/([a-zA-Z0-9-]+)/image$~D',$path,$m)){$r=query('SELECT mime,image FROM posters WHERE id=? AND deleted_at IS NULL',[$m[1]])->fetch();if(!$r)fail(404,'ไม่พบโปสเตอร์');$hash=hash('sha256',$r['image']);$headers=['ETag'=>'"'.$hash.'"','Cache-Control'=>($_GET['v']??'')===substr($hash,0,16)?'public, max-age=86400, immutable':'public, max-age=0, must-revalidate'];if(($_SERVER['HTTP_IF_NONE_MATCH']??'')==='"'.$hash.'"')reply(304,'',$r['mime'],$headers);reply(200,$r['image'],$r['mime'],$headers);}
     if($path==='/api/tables'){$rows=query('SELECT table_number,status FROM table_bookings')->fetchAll();$booked=[];$pending=0;$confirmed=0;foreach($rows as $r){$booked[(string)$r['table_number']]=$r['status'];$pending+=$r['status']==='pending';$confirmed+=$r['status']==='confirmed';}reply(200,['booked'=>(object)$booked,'summary'=>['total'=>61,'available'=>61-count(array_filter($rows,fn($r)=>(int)$r['table_number']<=61)),'pending'=>$pending,'confirmed'=>$confirmed]]);}
     if($path==='/api/blessings/random')reply(200,['blessing'=>query('SELECT message FROM blessings WHERE active=1 ORDER BY RAND() LIMIT 1')->fetchColumn()?:'ขอให้ท่านและครอบครัวมีความสุขความเจริญ']);
     if($path==='/api/admin/ticket'){reply(200,electronic_ticket(text($_GET['ref']??null,1,40,'เลขอ้างอิง')));}
@@ -61,7 +61,7 @@ try {
  }
  if($path==='/api/admin/posters'){
     if(($d['action']??'')==='delete'){$s=query('UPDATE posters SET deleted_at=? WHERE id=? AND deleted_at IS NULL',[time(),$d['id']??'']);if(!$s->rowCount())fail(404,'ไม่พบโปสเตอร์');reply(200,['ok'=>true]);}
-    if(($d['action']??'')!=='add')fail(400,'คำสั่งไม่ถูกต้อง');$title=text($d['title']??null,1,150,'ชื่อโปสเตอร์');[$raw,$mime]=image_file($d['file']??null,5*1024*1024);$id=bin2hex(random_bytes(12));query('INSERT INTO posters(id,title,mime,image,created) VALUES (?,?,?,?,?)',[$id,$title,$mime,$raw,time()]);reply(201,['id'=>$id,'title'=>$title,'url'=>'/api/posters/'.$id.'/image']);
+    if(($d['action']??'')!=='add')fail(400,'คำสั่งไม่ถูกต้อง');$title=text($d['title']??null,1,150,'ชื่อโปสเตอร์');[$raw,$mime]=image_file($d['file']??null,5*1024*1024);require_once dirname(getenv('PORTAL_LIB') ?: dirname(__DIR__).'/portal-private/lib.php').'/poster-images.php';[$raw,$mime]=optimize_poster_image($raw,$mime);$id=bin2hex(random_bytes(12));query('INSERT INTO posters(id,title,mime,image,created) VALUES (?,?,?,?,?)',[$id,$title,$mime,$raw,time()]);reply(201,['id'=>$id,'title'=>$title,'bytes'=>strlen($raw),'url'=>'/api/posters/'.$id.'/image']);
  }
  if($path==='/api/admin/blessings'){
     $action=$d['action']??'';$id=(int)($d['id']??0);

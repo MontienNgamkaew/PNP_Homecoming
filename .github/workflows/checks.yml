@@ -30,6 +30,7 @@ jobs:
           PORTAL_MYSQL_SOCKET: /var/run/mysqld/mysqld.sock
           PORTAL_MYSQL_PASSWORD: root
         run: |
+          if ! php -r 'exit(function_exists("imagewebp")?0:1);'; then sudo apt-get update; sudo apt-get install -y "php$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')-gd"; fi
           sudo systemctl start mysql.service
           python3 - <<'PY'
           import sys,unittest
