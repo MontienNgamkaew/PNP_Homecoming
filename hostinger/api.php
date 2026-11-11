@@ -26,17 +26,19 @@ try {
     if(preg_match('~^/api/posters/([a-zA-Z0-9-]+)/image$~D',$path,$m)){$r=query('SELECT mime,image FROM posters WHERE id=? AND deleted_at IS NULL',[$m[1]])->fetch();if(!$r)fail(404,'ไม่พบโปสเตอร์');reply(200,$r['image'],$r['mime']);}
     if($path==='/api/tables'){$rows=query('SELECT table_number,status FROM table_bookings')->fetchAll();$booked=[];$pending=0;$confirmed=0;foreach($rows as $r){$booked[(string)$r['table_number']]=$r['status'];$pending+=$r['status']==='pending';$confirmed+=$r['status']==='confirmed';}reply(200,['booked'=>(object)$booked,'summary'=>['total'=>61,'available'=>61-count(array_filter($rows,fn($r)=>(int)$r['table_number']<=61)),'pending'=>$pending,'confirmed'=>$confirmed]]);}
     if($path==='/api/blessings/random')reply(200,['blessing'=>query('SELECT message FROM blessings WHERE active=1 ORDER BY RAND() LIMIT 1')->fetchColumn()?:'ขอให้ท่านและครอบครัวมีความสุขความเจริญ']);
+    if($path==='/api/admin/cash-order'){$ref=text($_GET['ref']??null,6,40,'เลขอ้างอิง');$r=query('SELECT * FROM orders WHERE ref=?',[$ref])->fetch();if(!$r)fail(404,'ไม่พบรายการ');reply(200,public_order($r));}
     if($path==='/api/admin/blessings'){$rows=query('SELECT * FROM blessings ORDER BY id')->fetchAll();foreach($rows as &$r){$r['id']=(int)$r['id'];$r['active']=(int)$r['active'];}reply(200,$rows);}
     if($path==='/api/admin/orders'){
-       [$where,$args]=order_search();$page=max(1,min(100000,(int)($_GET['page']??1)));$offset=($page-1)*100;$rows=query("SELECT ref,type,name,phone,amount_cents,transferred,delivery_method,recipient_name,shipping_address,postcode,tables_list,category,status,created,pricing_snapshot FROM orders$where ORDER BY created DESC,ref DESC LIMIT 100 OFFSET $offset",$args)->fetchAll();reply(200,array_map('public_order',$rows));
+       [$where,$args]=order_search();$page=max(1,min(100000,(int)($_GET['page']??1)));$offset=($page-1)*100;$rows=query("SELECT ref,type,name,phone,amount_cents,transferred,delivery_method,recipient_name,shipping_address,postcode,tables_list,category,status,created,pricing_snapshot,mime FROM orders$where ORDER BY created DESC,ref DESC LIMIT 100 OFFSET $offset",$args)->fetchAll();reply(200,array_map('public_order',$rows));
     }
     if($path==='/api/admin/summary'){
        $r=query("SELECT COUNT(*) AS total,COALESCE(SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END),0) AS confirmed_cents,SUM(status='pending') AS pending FROM orders")->fetch();
+       $cash=(int)query("SELECT COALESCE(SUM(amount_cents),0) FROM orders WHERE status='confirmed' AND JSON_UNQUOTE(JSON_EXTRACT(pricing_snapshot,'$.payment_receipt.method'))='cash'")->fetchColumn();$r['by_payment']=['cash_cents'=>$cash,'transfer_cents'=>(int)$r['confirmed_cents']-$cash];
        $r['shirt_count']=(int)query("SELECT COALESCE(SUM(i.qty),0) FROM order_items i JOIN orders o ON i.order_ref=o.ref WHERE o.type='shirts' AND o.status<>'rejected'")->fetchColumn();
        $r['booked_tables']=(int)query('SELECT COUNT(*) FROM table_bookings')->fetchColumn();foreach(['total','confirmed_cents','pending'] as $k)$r[$k]=(int)$r[$k];[$where,$args]=order_search();$filtered=query("SELECT COUNT(*) AS filtered_count,COALESCE(SUM(amount_cents),0) AS filtered_cents,COALESCE(SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END),0) AS filtered_confirmed_cents FROM orders".$where,$args)->fetch();foreach($filtered as $k=>$v)$r[$k]=(int)$v;
        $r['by_type']=[];foreach(query("SELECT type,COUNT(*) AS total,COALESCE(SUM(status='pending'),0) AS pending,COALESCE(SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END),0) AS confirmed_cents FROM orders GROUP BY type")->fetchAll() as $group){foreach(['total','pending','confirmed_cents'] as $k)$group[$k]=(int)$group[$k];$r['by_type'][$group['type']]=$group;}$r['page_size']=100;reply(200,$r);
     }
-    if(preg_match('~^/api/admin/order-slip/([A-Za-z0-9-]+)$~D',$path,$m)){$r=query('SELECT mime,slip FROM orders WHERE ref=?',[$m[1]])->fetch();if(!$r)fail(404,'ไม่พบสลิป');$ext=['image/png'=>'png','image/jpeg'=>'jpg','application/pdf'=>'pdf','image/webp'=>'webp'][$r['mime']]??'bin';reply(200,$r['slip'],$r['mime'],['Content-Disposition'=>'attachment; filename="'.$m[1].'.'.$ext.'"','Content-Security-Policy'=>"sandbox; default-src 'none'"]);}
+    if(preg_match('~^/api/admin/order-slip/([A-Za-z0-9-]+)$~D',$path,$m)){$r=query('SELECT mime,slip FROM orders WHERE ref=?',[$m[1]])->fetch();if(!$r||$r['mime']==='text/plain')fail(404,'รายการนี้ไม่มีเอกสารแนบ');$ext=['image/png'=>'png','image/jpeg'=>'jpg','application/pdf'=>'pdf','image/webp'=>'webp'][$r['mime']]??'bin';reply(200,$r['slip'],$r['mime'],['Content-Disposition'=>'attachment; filename="'.$m[1].'.'.$ext.'"','Content-Security-Policy'=>"sandbox; default-src 'none'"]);}
     fail(404,'ไม่พบหน้า');
  }
  if($path==='/api/admin/login'){
@@ -90,6 +92,41 @@ try {
        return ['ref'=>$ref,'token'=>$token,'status'=>'pending','type'=>$r['type'],'amount'=>$r['amount_cents']/100,'blessing'=>query('SELECT message FROM blessings WHERE active=1 ORDER BY RAND() LIMIT 1')->fetchColumn()?:'ขอให้ท่านและครอบครัวมีความสุขความเจริญ'];
     });reply(201,$out);
  }
+ if($path==='/api/admin/cash-receipt'){
+    $request=text($d['request_id']??null,16,80,'รหัสคำขอ');if(!preg_match('/^[a-zA-Z0-9-]+$/D',$request))fail(400,'รหัสคำขอไม่ถูกต้อง');
+    $collector=text($d['collector']??null,2,150,'ผู้รับเงิน');$received=text($d['received_date']??null,10,10,'วันที่รับเงิน');
+    $date=DateTimeImmutable::createFromFormat('!Y-m-d',$received,new DateTimeZone('Asia/Bangkok'));
+    if(!$date||$date->format('Y-m-d')!==$received||$received>(new DateTimeImmutable('now',new DateTimeZone('Asia/Bangkok')))->format('Y-m-d'))fail(400,'วันที่รับเงินไม่ถูกต้องหรือเป็นวันในอนาคต');
+    $note=text($d['note']??'',0,1000,'หมายเหตุ');$ref=trim((string)($d['ref']??''));$edit=($d['edit_receipt']??false)===true;
+    $reason=$edit?text($d['reason']??null,3,500,'เหตุผลแก้ไข'):'';
+    $attachment=$d['file']??'';[$raw,$mime]=$attachment!==''?image_file($attachment,5*1024*1024,true):['','text/plain'];
+    $out=transaction(function()use($d,$request,$collector,$received,$note,$ref,$edit,$reason,$raw,$mime){
+       $c=settings(true);$receipt=['method'=>'cash','collector'=>$collector,'received_date'=>$received,'note'=>$note,'request_id'=>$request];
+       $digest=hash('sha256','cash-receipt:'.$request);
+       if($ref===''){
+          if($edit)fail(400,'กรุณาระบุเลขอ้างอิง');
+          if($existing=query('SELECT ref,status,type FROM orders WHERE digest=?',[$digest])->fetch())return $existing;
+          [$r,$tables,$items]=normalize_order($d,$c,true);
+          if(cents($d['amount']??null,1)!==$r['amount_cents'])fail(409,'ยอดรับเงินไม่ตรงกับราคาและรายละเอียด กรุณาตรวจสอบอีกครั้ง');
+          $id=allocate_ref();$snapshot=json_decode($r['pricing_snapshot'],true);$snapshot['payment_receipt']=$receipt;$r['pricing_snapshot']=js($snapshot);
+          $r+=['ref'=>$id,'secret_hash'=>hash('sha256',bin2hex(random_bytes(32))),'transferred'=>$received,'digest'=>$digest,'mime'=>$mime,'slip'=>$raw,'status'=>'pending','created'=>time()];
+          $keys=array_keys($r);query('INSERT INTO orders (`'.implode('`,`',$keys).'`) VALUES ('.implode(',',array_fill(0,count($keys),'?')).')',array_values($r));
+          claim_tables($id,$tables,'pending');foreach($items as $it)query('INSERT INTO order_items(order_ref,size,qty) VALUES (?,?,?)',[$id,$it['size'],$it['qty']]);
+          query('INSERT INTO order_audit(ref,old,new,at) VALUES (?,?,?,?)',[$id,'',js(['action'=>'cash_created','receipt'=>$receipt,'amount_cents'=>$r['amount_cents']]),time()]);
+          return ['ref'=>$id,'status'=>'pending','type'=>$r['type']];
+       }
+       $old=query('SELECT * FROM orders WHERE ref=? FOR UPDATE',[$ref])->fetch();if(!$old)fail(404,'ไม่พบรายการ');$previous=payment_receipt($old);
+       if(($previous['request_id']??'')===$request)return ['ref'=>$ref,'status'=>$old['status'],'type'=>$old['type']];
+       if($edit){if(!$previous)fail(409,'รายการนี้ยังไม่มีข้อมูลรับเงินสด');}
+       else{if($previous)fail(409,'รายการนี้บันทึกรับเงินสดแล้ว กรุณาแก้ไขรายการเดิม');if($old['status']!=='pending')fail(409,'รับเงินสดได้เฉพาะรายการรอตรวจสอบ');}
+       if(!$edit&&cents($d['amount']??null,1)!==(int)$old['amount_cents'])fail(409,'ยอดเงินไม่ตรงกับรายการเดิม');
+       $snapshot=json_decode($old['pricing_snapshot'],true)?:[];$snapshot['payment_receipt']=$receipt;
+       query('UPDATE orders SET pricing_snapshot=?,transferred=? WHERE ref=?',[js($snapshot),$received,$ref]);
+       // Preserve the originally uploaded slip when linking an existing order.
+       query('INSERT INTO order_audit(ref,old,new,at) VALUES (?,?,?,?)',[$ref,js(['receipt'=>$previous]),js(['action'=>$edit?'cash_edited':'cash_linked','receipt'=>$receipt,'reason'=>$reason]),time()]);
+       return ['ref'=>$ref,'status'=>$old['status'],'type'=>$old['type']];
+    });reply(200,$out);
+ }
  if($path==='/api/admin/ticket-reissue'){
     limited('ticket-reissue',30);$ref=text($d['ref']??null,1,40,'เลขอ้างอิง');$reason=text($d['reason']??null,3,500,'เหตุผล');
     if(($d['verified']??false)!==true)fail(400,'กรุณาตรวจสอบตัวตนผู้จองก่อนออกลิงก์ใหม่');
@@ -115,12 +152,13 @@ try {
        // Keep original pricing for corrections; explicit repricing uses current settings.
        $snap=json_decode($old['pricing_snapshot'],true)?:[];$pricing=$c;
        if(empty($d['reprice'])){if(isset($snap['table_unit_cents']))$pricing['table']=$snap['table_unit_cents']/100;if(isset($snap['shirt_unit_cents']))$pricing['shirt']=$snap['shirt_unit_cents']/100;if(isset($snap['shipping_cents'])&&$old['delivery_method']==='post')$pricing['shipping']=$snap['shipping_cents']/100;}
-       [$r,$tables,$items]=normalize_order(array_replace($d,['type'=>$old['type']]),$pricing);
+       [$r,$tables,$items]=normalize_order(array_replace($d,['type'=>$old['type']]),$pricing,payment_receipt($old)!==null);
        if(empty($d['reprice'])&&in_array($old['type'],['tables','shirts'],true)&&!isset($snap[$old['type']==='tables'?'table_unit_cents':'shirt_unit_cents'])){
           $same=$old['type']==='tables'?$r['tables_list']===$old['tables_list']:($r['delivery_method']===$old['delivery_method']&&quantities(order_items($ref))===quantities($items));
           if(!$same)fail(409,'รายการเก่าไม่มีราคาต่อหน่วย กรุณาเลือกใช้ราคาปัจจุบันก่อนแก้จำนวนหรือวิธีรับ');
           $r['amount_cents']=(int)$old['amount_cents'];$r['pricing_snapshot']=$old['pricing_snapshot'];
        }
+       if(isset($snap['payment_receipt'])){$updated=json_decode($r['pricing_snapshot'],true);$updated['payment_receipt']=$snap['payment_receipt'];$r['pricing_snapshot']=js($updated);}
        if(cents($d['amount']??null,1)!==$r['amount_cents'])fail(409,'ยอดเงินไม่ตรงกับรายละเอียดที่แก้ไข');
        query('DELETE FROM table_bookings WHERE order_ref=?',[$ref]);if($old['type']==='tables')claim_tables($ref,$tables,$old['status']);query('DELETE FROM order_items WHERE order_ref=?',[$ref]);foreach($items as $it)query('INSERT INTO order_items(order_ref,size,qty) VALUES (?,?,?)',[$ref,$it['size'],$it['qty']]);
        $sets=[];foreach($r as $k=>$v)$sets[]='`'.$k.'`=?';query('UPDATE orders SET '.implode(',',$sets).' WHERE ref=?',[...array_values($r),$ref]);

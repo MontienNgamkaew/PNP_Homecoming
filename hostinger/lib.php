@@ -90,11 +90,11 @@ function limited(string $scope,int $max): void {
 function transaction(callable $fn): mixed {
     db()->beginTransaction();try{$r=$fn();db()->commit();return $r;}catch(Throwable $e){if(db()->inTransaction())db()->rollBack();throw $e;}
 }
-function normalize_order(array $d,array $c): array {
+function normalize_order(array $d,array $c,bool $cash=false): array {
     $map=['tables'=>'tables','โต๊ะจีน'=>'tables','shirts'=>'shirts','เสื้อที่ระลึก'=>'shirts','donate'=>'donate','ทอดผ้าป่า'=>'donate','fund'=>'fund','กองทุนช่างกล'=>'fund'];
     $type=$map[$d['type']??'']??null;if(!$type)fail(400,'ประเภทรายการไม่ถูกต้อง');
-    $r=['type'=>$type,'name'=>text($d['name']??null,2,150,'ชื่อ–นามสกุล'),'phone'=>text($d['phone']??null,9,20,'เบอร์โทร'),'delivery_method'=>null,'recipient_name'=>null,'shipping_address'=>null,'postcode'=>null,'tables_list'=>'','category'=>$type==='fund'?'กองทุนช่างกลโรงงาน':($type==='donate'?'ร่วมทำบุญทอดผ้าป่า':null)];
-    if(!preg_match('/^[0-9+ ()-]{9,20}$/D',$r['phone']))fail(400,'เบอร์โทรไม่ถูกต้อง');$tables=[];$items=[];$price=['settings_revision'=>$c['revision']];
+    $r=['type'=>$type,'name'=>text($d['name']??null,2,150,'ชื่อ–นามสกุล'),'phone'=>text($d['phone']??'',($cash&&in_array($type,['donate','fund'],true))?0:9,20,'เบอร์โทร'),'delivery_method'=>null,'recipient_name'=>null,'shipping_address'=>null,'postcode'=>null,'tables_list'=>'','category'=>$type==='fund'?'กองทุนช่างกลโรงงาน':($type==='donate'?'ร่วมทำบุญทอดผ้าป่า':null)];
+    if($r['phone']!==''&&!preg_match('/^[0-9+ ()-]{9,20}$/D',$r['phone']))fail(400,'เบอร์โทรไม่ถูกต้อง');$tables=[];$items=[];$price=['settings_revision'=>$c['revision']];
     if($type==='tables'){
         if(!isset($d['tables'])||!is_array($d['tables'])||!count($d['tables'])||count($d['tables'])>61)fail(400,'กรุณาเลือกโต๊ะ');
         foreach($d['tables'] as $n){if(!(is_int($n)||(is_string($n)&&ctype_digit($n)))||(int)$n<1||(int)$n>61)fail(400,'หมายเลขโต๊ะไม่ถูกต้อง');$tables[]=(int)$n;}
@@ -134,4 +134,5 @@ function order_search(): array {
     return [count($clauses)?' WHERE '.implode(' AND ',$clauses):'',$args];
 }
 function quantities(array $items): array {$r=[];foreach($items as $it)$r[$it['size']]=($r[$it['size']]??0)+(int)$it['qty'];ksort($r);return $r;}
-function public_order(array $r): array {unset($r['secret_hash'],$r['digest'],$r['slip'],$r['mime']);$r['amount_cents']=(int)$r['amount_cents'];$r['created']=(int)$r['created'];if($r['type']==='shirts')$r['items']=order_items($r['ref']);return $r;}
+function payment_receipt(array $r): ?array {return (json_decode($r['pricing_snapshot']??'{}',true)?:[])['payment_receipt']??null;}
+function public_order(array $r): array {$receipt=payment_receipt($r);$r['payment_method']=$receipt?'cash':'transfer';if($receipt){unset($receipt['request_id']);$r['cash_receipt']=$receipt;}$r['has_slip']=!empty($r['mime'])&&$r['mime']!=='text/plain';unset($r['secret_hash'],$r['digest'],$r['slip'],$r['mime']);$r['amount_cents']=(int)$r['amount_cents'];$r['created']=(int)$r['created'];if($r['type']==='shirts')$r['items']=order_items($r['ref']);return $r;}

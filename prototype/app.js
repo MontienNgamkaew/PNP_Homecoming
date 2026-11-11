@@ -427,7 +427,7 @@ async function admin() {
   if (tab === 'overview') { adminCategory=''; adminPaymentStatus=''; adminSearch=''; adminPage=1; }
   app.innerHTML = head('ภาพรวมผู้ดูแล', 'ระบบจัดการรายการจองและตรวจสอบสลิปจริง') + `
     <div class="tabs">
-      ${[['overview', 'ภาพรวม'], ['orders', 'รายการทั้งหมด (' + adminOrders.length + ')'], ['blessings', 'คำอวยพร (' + adminBlessings.length + ')'], ['posters', 'โปสเตอร์'], ['hero', 'ข้อความแบนเนอร์'], ['settings', 'ตั้งค่าเว็บไซต์']].map(([v, t]) => `
+      ${[['overview', 'ภาพรวม'], ['cash', 'บันทึกรับเงินสด'], ['orders', 'รายการทั้งหมด (' + adminOrders.length + ')'], ['blessings', 'คำอวยพร (' + adminBlessings.length + ')'], ['posters', 'โปสเตอร์'], ['hero', 'ข้อความแบนเนอร์'], ['settings', 'ตั้งค่าเว็บไซต์']].map(([v, t]) => `
         <button class="ui-btn ui-btn-sm ${tab === v ? 'ui-btn-primary' : 'ui-btn-ghost'}" data-admin-tab="${v}" onclick="tab='${v}';admin()">${t}</button>
       `).join('')}
     </div>
@@ -495,6 +495,7 @@ async function admin() {
   body.addEventListener('click', event => {
     const category=event.target.closest('[data-order-category]'); if(category){adminCategory=category.dataset.orderCategory;adminPage=1;tab='orders';admin();}
     const reissue=event.target.closest('[data-reissue-ticket]'); if(reissue)openTicketReissue(reissue.dataset.reissueTicket);
+    const receipt=event.target.closest('[data-cash-edit]');if(receipt){const order=adminOrders.find(o=>o.ref===receipt.dataset.cashEdit);if(order)renderCashAdmin(body,order);}
     const edit=event.target.closest('[data-edit-order]'); if(edit)openOrderEditor(edit.dataset.editOrder);
     const page=event.target.closest('[data-admin-page]'); if(page){adminPage=Number(page.dataset.adminPage);tab='orders';admin();}
  const button=event.target.closest('[data-edit-blessing]'); if(button){const entry=adminBlessings.find(b=>b.id===Number(button.dataset.editBlessing)); if(entry)editBlessing(entry.id,entry.message);} });
@@ -581,6 +582,8 @@ async function admin() {
     renderPosterAdmin(body);
     return;
   }
+
+  if (tab === 'cash') { renderCashAdmin(body); return; }
 
   if (tab === 'hero') { renderHeroAdmin(body); return; }
 
@@ -673,6 +676,7 @@ async function admin() {
       <div class="stats">
         ${[
           ['ยอดยืนยันแล้ว', '฿' + money(adminSummary ? adminSummary.confirmed_cents / 100 : confirmedSum)],
+          ...(adminSummary?.by_payment ? [['เงินสดยืนยันแล้ว','฿'+money(adminSummary.by_payment.cash_cents/100)],['เงินโอนยืนยันแล้ว','฿'+money(adminSummary.by_payment.transfer_cents/100)]] : []),
           ['รอตรวจสอบ', (adminSummary ? adminSummary.pending : pendingCount) + ' รายการ'],
           ['โต๊ะที่จอง', (adminSummary ? adminSummary.booked_tables : bookedTableCount) + ' / 61'],
           ['เสื้อที่จอง', (adminSummary ? adminSummary.shirt_count : shirtCount) + ' ตัว']
