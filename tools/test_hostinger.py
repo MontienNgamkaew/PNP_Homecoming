@@ -299,4 +299,12 @@ class Hostinger(unittest.TestCase):
   summary=self.request('/api/admin/summary',cookie=self.cookie)[1];self.assertEqual(summary['confirmed_cents'],sum(summary['by_payment'].values()))
   self.assertGreaterEqual(summary['by_payment']['cash_cents'],12050+59800)
   self.assertGreaterEqual(int(self.sql("SELECT COUNT(*) FROM order_audit WHERE ref='"+ref+"'",self.name)),4)
+ def test_20_slip_inline_preview(self):
+  for raw,mime in [(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB1sAAAAASUVORK5CYII='),'image/png'),(b'%PDF-1.4 preview'+uuid.uuid4().hex.encode(),'application/pdf')]:
+   status,order,_=self.request('/api/orders',self.payload(type='donate',tables=[],amount='100',file=base64.b64encode(raw).decode()));self.assertEqual(status,201,order)
+   path='/api/admin/order-slip/'+order['ref'];self.assertEqual(self.request(path)[0],401)
+   status,body,headers=self.request(path,cookie=self.cookie);self.assertEqual(status,200);self.assertEqual(body,raw)
+   self.assertTrue(headers['Content-Disposition'].startswith('inline;'))
+   self.assertEqual(headers['Content-Type'],mime);self.assertEqual(headers['Cache-Control'],'no-store')
+   self.assertEqual(headers['X-Frame-Options'],'DENY')
 if __name__=='__main__':unittest.main(verbosity=2)

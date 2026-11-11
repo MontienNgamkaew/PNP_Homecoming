@@ -31,7 +31,7 @@ class PortalError extends RuntimeException {}
 function reply(int $code,mixed $data,string $mime='application/json; charset=utf-8',array $headers=[]): never {
     http_response_code($code);header('Content-Type: '.$mime);header('Cache-Control: no-store');
     header('X-Content-Type-Options: nosniff');header('Referrer-Policy: no-referrer');header('X-Frame-Options: DENY');
-    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     foreach($headers as $k=>$v)header($k.': '.$v);
     echo str_starts_with($mime,'application/json')?js($data):$data;exit;
 }

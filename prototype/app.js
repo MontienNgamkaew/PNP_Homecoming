@@ -332,6 +332,7 @@ function track() {
 }
 
 function modal(html) {
+  clearSlipPreview();
   resetBlessingCard();
   $('#modal').removeAttribute('aria-labelledby');
   $('#modal').setAttribute('aria-label', 'รายละเอียดรายการ');
@@ -339,7 +340,7 @@ function modal(html) {
   $('#modal').hidden = false;
   $('#modal').querySelector('button,input')?.focus();
 }
-function closeModal() { resetBlessingCard(); const root=$('#modal'); root.hidden=true; if(root.querySelector('#reissued-token')) root.innerHTML=''; }
+function closeModal() { clearSlipPreview(); resetBlessingCard(); const root=$('#modal'); root.hidden=true; if(root.querySelector('#reissued-token, #slip-preview')) root.innerHTML=''; }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 function showPoster() { showCurrentPoster(); }
 
@@ -493,6 +494,7 @@ async function admin() {
   body.addEventListener('change', event => {if(event.target.id==='admin-payment-status'){adminPaymentStatus=event.target.value;adminPage=1;tab='orders';admin();}});
   body.addEventListener('submit', event => { if(event.target.id==='admin-search'){event.preventDefault();adminSearch=event.target.elements.query.value.trim();adminPage=1;tab='orders';admin();} });
   body.addEventListener('click', event => {
+    const preview=event.target.closest('[data-slip-preview]');if(preview)openSlipPreview(preview.dataset.slipPreview,preview);
     const category=event.target.closest('[data-order-category]'); if(category){adminCategory=category.dataset.orderCategory;adminPage=1;tab='orders';admin();}
     const reissue=event.target.closest('[data-reissue-ticket]'); if(reissue)openTicketReissue(reissue.dataset.reissueTicket);
     const receipt=event.target.closest('[data-cash-edit]');if(receipt){const order=adminOrders.find(o=>o.ref===receipt.dataset.cashEdit);if(order)renderCashAdmin(body,order);}
@@ -501,7 +503,7 @@ async function admin() {
  const button=event.target.closest('[data-edit-blessing]'); if(button){const entry=adminBlessings.find(b=>b.id===Number(button.dataset.editBlessing)); if(entry)editBlessing(entry.id,entry.message);} });
 
   body.insertAdjacentHTML('beforebegin', '<button class="ui-btn ui-btn-sm ui-btn-ghost" id="admin-logout">ออกจากระบบ</button>');
-  $('#admin-logout').onclick = async () => { const r = await fetch('/api/admin/logout', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); if(r.ok){adminOrders=[];adminSummary=null;adminPage=1;admin();} else alert('ออกจากระบบไม่สำเร็จ'); };
+  $('#admin-logout').onclick = async () => { closeModal(); const r = await fetch('/api/admin/logout', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); if(r.ok){adminOrders=[];adminSummary=null;adminPage=1;admin();} else alert('ออกจากระบบไม่สำเร็จ'); };
 
   if (tab === 'blessings') {
     body.innerHTML = `<button class="btn ui-btn ui-btn-outline mb-4" onclick="prepareBlessingAudio();blessingPreview()">ชมการ์ดอวยพรและเสียง ♫</button>
@@ -769,6 +771,7 @@ async function loadSettings() {
 async function route() {
   stopPosterCarousel();
   stopTotals();
+  if(document.querySelector('#slip-preview'))closeModal();
   const version = ++routeVersion;
   app.innerHTML = '<p class="muted" role="status">กำลังโหลดข้อมูลล่าสุด…</p>';
   try { await Promise.all([loadSettings(), loadPosters()]); } catch (error) {

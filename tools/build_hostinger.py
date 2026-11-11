@@ -8,7 +8,7 @@ import re
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-ASSET_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.wav', '.mp3', '.woff', '.woff2', '.js'}
+ASSET_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.wav', '.mp3', '.woff', '.woff2', '.js', '.bcmap', '.pfb', '.ttf', '.wasm'}
 PRIVATE_FILES = ('lib.php', 'schema.sql', 'config.example.php', 'install.php', 'check.php', 'backup.php', 'restore.php', 'import.php')
 
 

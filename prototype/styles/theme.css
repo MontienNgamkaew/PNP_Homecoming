@@ -413,3 +413,9 @@ body.blessing-open{overflow:hidden}
 .cash-subtabs [role=tab]:focus-visible{outline:3px solid #c69c46;outline-offset:2px}
 #cash-kind-title{font-size:22px;font-weight:600;margin-bottom:18px;color:#173b4d}
 @media(max-width:600px){.cash-subtabs{grid-template-columns:repeat(2,minmax(0,1fr))}.cash-subtabs [role=tab]{font-size:15px}}
+.modal-content:has(#slip-preview){width:min(960px,96vw);max-width:960px;max-height:94dvh;overflow:auto;padding:clamp(18px,3vw,32px)}
+#slip-preview h2{font-size:clamp(18px,2vw,26px);margin-right:32px}
+#slip-preview-status{color:#56717d;font-size:14px;margin:12px 0}
+#slip-preview-document{display:grid;gap:12px;min-width:0}
+#slip-preview-document img{display:block;max-width:100%;height:auto;margin:auto;border-radius:10px;background:#f0f3f4}
+.slip-pdf-toolbar{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px}.slip-pdf-pages{overflow:auto;max-height:68dvh;background:#e8edf0;border-radius:10px;padding:10px}.slip-pdf-pages canvas{display:block;margin:auto;background:#fff;box-shadow:0 2px 8px #1233}

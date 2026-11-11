@@ -283,7 +283,7 @@ class Handler(BaseHTTPRequestHandler):
             'Referrer-Policy': 'no-referrer',
             'Content-Security-Policy': (
                 "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline'; "
+                "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; "
                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
                 "font-src 'self' https://fonts.gstatic.com; "
                 "img-src 'self' data: blob:; "
@@ -452,7 +452,7 @@ class Handler(BaseHTTPRequestHandler):
             if not row: return self.send(404, {'error':'ไม่พบรายการ'})
             ext = {'image/png':'png','image/jpeg':'jpg','application/pdf':'pdf'}.get(row['mime'], 'bin')
             return self.send(200, row['slip'], row['mime'], {
-                'Content-Disposition': f'attachment; filename="{row["ref"]}.{ext}"',
+                'Content-Disposition': f'inline; filename="{row["ref"]}.{ext}"',
                 'Content-Security-Policy': "sandbox; default-src 'none'"
             })
 
