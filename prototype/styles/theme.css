@@ -390,3 +390,19 @@ body.blessing-open{overflow:hidden}
 @media(max-width:760px){.totals-categories{grid-template-columns:repeat(2,minmax(0,1fr))}.totals-category strong{font-size:clamp(19px,4.8vw,32px)}.totals-title{margin-top:28px}.totals-foot{justify-content:center;text-align:center}.totals-grand{padding:16px 0 24px}.totals-board:fullscreen,.totals-expanded{justify-content:flex-start}.totals-board:fullscreen .totals-grand strong,.totals-expanded .totals-grand strong{font-size:clamp(39px,10vw,85px)}}
 @media(max-width:380px){.mobile-nav small{font-size:10px}.totals-category{padding:12px}.totals-category h2{font-size:12px}.totals-grand strong{font-size:36px}}
 @media(prefers-reduced-motion:reduce){.totals-board *{scroll-behavior:auto}}
+/* Fit the complete table layout to its container, preserving all nine columns. */
+.dinner-plan-scroll{container-type:inline-size;overflow:visible;min-width:0;width:100%;padding:8px 0 18px}
+.dinner-plan,.dinner-plan .tables{min-width:0;width:100%}
+.dinner-plan .dinner-row{gap:clamp(1px,1cqw,9px);min-height:0;margin-bottom:clamp(10px,2cqw,20px)}
+.dinner-plan .seat-table{width:100%;max-width:76px;height:auto;aspect-ratio:76/80;font-size:clamp(10px,2cqw,18px)}
+.dinner-plan .seat-table>span{inset:18% 14%;border-width:clamp(1px,.3cqw,3px)}
+.dinner-plan .dinner-chair{width:18%;height:15%;left:41%;top:42%;border-width:clamp(1px,.2cqw,2px);transform:rotate(var(--angle)) translateY(clamp(-31px,-3.6cqw,-10px))}
+.dinner-plan .vip-table{width:65%;max-width:54px;height:clamp(40px,12cqw,96px);box-shadow:none}
+.dinner-plan .vip-table>span{font-size:clamp(9px,2cqw,19px)}
+.dinner-plan .vip-table>small{font-size:clamp(6px,1cqw,10px)}
+.dinner-plan .dinner-stage{width:min(50%,340px);margin-bottom:clamp(14px,3cqw,24px)}
+.dinner-plan .dinner-stage svg{height:auto;display:block}
+.dinner-plan .dinner-stage strong{font-size:clamp(13px,2cqw,18px)}
+.shirt-image-settings{border:1px solid #d9e3e7;border-radius:14px;padding:16px;margin:20px 0}
+.shirt-image-settings legend{font-weight:600;padding:0 8px}
+@media(max-width:480px){.dinner-plan .seat-table{min-height:32px}.dinner-plan .dinner-chair{opacity:.7}.dinner-plan .seat-table.selected>span{outline-width:2px;outline-offset:0}.dinner-plan .dinner-row:nth-child(2){margin-bottom:18px}}

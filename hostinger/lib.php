@@ -64,8 +64,9 @@ function image_file(mixed $encoded,int $max,bool $pdf=false): array {
 function validated_settings(array $d): array {
     $r=[];foreach(['shirt','table','shipping'] as $k)$r[$k]=cents($d[$k]??null,$k==='shipping'?0:1)/100;
     $r['event']=text($d['event']??null,1,150,'วันที่จัดงาน');
+    $shirt=$d['shirt_image']??'';if($shirt!==''){if(!is_string($shirt)||!preg_match('~^data:(image/(?:png|jpeg|webp));base64,(.+)$~sD',$shirt,$m))fail(400,'ภาพเสื้อไม่ถูกต้อง');[$raw,$mime]=image_file($m[2],1024*1024);if($mime!==$m[1])fail(400,'ภาพเสื้อไม่ถูกต้อง');}$r['shirt_image']=$shirt;
     $r['qr']=[];$qr=$d['qr']??[];if(!is_array($qr)||array_diff(array_keys($qr),['donate','fund','tables','shirts']))fail(400,'ประเภท QR ไม่ถูกต้อง');
-    foreach($qr as $k=>$v){if(!is_string($v)||!preg_match('~^data:(image/(?:png|jpeg));base64,(.+)$~sD',$v,$m))fail(400,'QR ไม่ถูกต้อง');[$raw,$mime]=image_file($m[3],1024*1024);if($mime!==$m[1])fail(400,'QR ไม่ถูกต้อง');$r['qr'][$k]=$v;}
+    foreach($qr as $k=>$v){if(!is_string($v)||!preg_match('~^data:(image/(?:png|jpeg));base64,(.+)$~sD',$v,$m))fail(400,'QR ไม่ถูกต้อง');[$raw,$mime]=image_file($m[2],1024*1024);if($mime!==$m[1])fail(400,'QR ไม่ถูกต้อง');$r['qr'][$k]=$v;}
     $r['qr']=(object)$r['qr'];$hero=$d['hero']??default_hero();if(!is_array($hero))fail(400,'ข้อมูลแบนเนอร์ไม่ถูกต้อง');
     foreach(default_hero() as $k=>$v){$val=$hero[$k]??$v;if(is_string($v)){$r['hero'][$k]=text($val,0,$k==='description'?400:100,'ข้อความแบนเนอร์');}else{if(!is_int($val)||$val<12||$val>(str_contains($k,'Title')?64:28))fail(400,'ขนาดตัวอักษรไม่ถูกต้อง');$r['hero'][$k]=$val;}}
     $accounts=$d['accounts']??default_accounts();

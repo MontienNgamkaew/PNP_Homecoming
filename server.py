@@ -73,6 +73,19 @@ def validate_settings(d):
     if not isinstance(event, str) or not 1 <= len(event.strip()) <= 150:
         raise ValueError('กรุณาระบุวันจัดงาน')
     result['event'] = event.strip()
+    shirt = d.get('shirt_image', '')
+    if shirt != '':
+        if not isinstance(shirt, str) or ',' not in shirt:
+            raise ValueError('ภาพเสื้อไม่ถูกต้อง')
+        header, payload = shirt.split(',', 1)
+        raw = base64.b64decode(payload, validate=True)
+        valid = ((header == 'data:image/png;base64' and raw.startswith(b'\x89PNG\r\n\x1a\n')) or
+                 (header == 'data:image/jpeg;base64' and raw.startswith(b'\xff\xd8\xff')) or
+                 (header == 'data:image/webp;base64' and raw.startswith(b'RIFF') and raw[8:12] == b'WEBP'))
+        if not valid or not 0 < len(raw) <= 1024 * 1024:
+            raise ValueError('ภาพเสื้อต้องเป็น JPG, PNG หรือ WebP ไม่เกิน 1 MB')
+    result['shirt_image'] = shirt
+
     qr = d.get('qr', {})
     if not isinstance(qr, dict) or set(qr) - QR_KINDS:
         raise ValueError('ประเภท QR ไม่ถูกต้อง')

@@ -42,7 +42,7 @@ function home() {
     ['03','tables','จองโต๊ะจีน','61 โต๊ะ · โต๊ะละ 8 ท่าน','฿'+money(settings.table)+' / โต๊ะ'],
     ['04','shirts','เสื้อที่ระลึก','เลือกไซซ์ XS–4XL · รับเองหรือจัดส่ง','฿'+money(settings.shirt)+' / ตัว']
   ].map(([n,k,t,d,c])=>`<a class="service-tile service-${k}" href="#${k}"><div class="service-top"><span class="service-no">${n}</span><img src="assets/design-v1/icon-${k}.png" alt=""></div><h3>${t}</h3><p>${d}</p><div class="service-bottom"><b>${c}</b><span class="service-arrow">↗</span></div></a>`).join('')}</section>
-<section class="shirt-feature"><div class="shirt-feature-image"><img src="assets/shirt.png" alt="เสื้อที่ระลึกงานคืนสู่เหย้า ด้านหน้าและด้านหลัง" loading="lazy"></div><div class="shirt-feature-copy"><span class="eyebrow">TAKE THE MEMORIES HOME</span><h2>เก็บความผูกพัน<br>ไว้ใกล้ตัว</h2><p>เสื้อที่ระลึกคืนสู่เหย้า ครั้งที่ 2</p><div class="feature-price">${money(settings.shirt)}<small>บาท / ตัว</small></div><a class="ui-btn ui-btn-primary" href="#shirts">เลือกไซซ์และจองเสื้อ ↗</a><small class="feature-delivery">รับที่วิทยาลัยฟรี · จัดส่ง ${money(settings.shipping)} บาท / คำสั่งจอง</small></div></section>`;
+<section class="shirt-feature"><div class="shirt-feature-image"><img src="${esc(settings.shirt_image || 'assets/shirt.png')}" alt="เสื้อที่ระลึกงานคืนสู่เหย้า ด้านหน้าและด้านหลัง" loading="lazy"></div><div class="shirt-feature-copy"><span class="eyebrow">TAKE THE MEMORIES HOME</span><h2>เก็บความผูกพัน<br>ไว้ใกล้ตัว</h2><p>เสื้อที่ระลึกคืนสู่เหย้า ครั้งที่ 2</p><div class="feature-price">${money(settings.shirt)}<small>บาท / ตัว</small></div><a class="ui-btn ui-btn-primary" href="#shirts">เลือกไซซ์และจองเสื้อ ↗</a><small class="feature-delivery">รับที่วิทยาลัยฟรี · จัดส่ง ${money(settings.shipping)} บาท / คำสั่งจอง</small></div></section>`;
   startPosterCarousel();
 }
 
@@ -106,7 +106,7 @@ function tables() {
         <span>รอตรวจสอบ</span>
         <span>ยืนยันแล้ว</span>
       </div>
-      <p class="muted">VIP 2 โต๊ะสำหรับแขกพิเศษ ไม่เปิดจอง · เลื่อนผังซ้าย–ขวาบนมือถือ</p>
+      <p class="muted">VIP 2 โต๊ะสำหรับแขกพิเศษ ไม่เปิดจอง · แตะหมายเลขโต๊ะเพื่อเลือก</p>
     </section>
     <section class="card ui-card">
       <h2>สรุปการจอง</h2>
@@ -161,7 +161,7 @@ function shirts() {
   app.innerHTML = head('เสื้อที่ระลึก', 'ใส่ความผูกพัน ให้วันคืนสู่เหย้า') + `
   <div class="layout">
     <section class="card ui-card">
-      <img class="photo" src="assets/shirt.png" alt="เสื้อที่ระลึก สีเขียว ขาว ทอง ด้านหน้าและด้านหลัง">
+      <img class="photo" src="${esc(settings.shirt_image || 'assets/shirt.png')}" alt="แบบเสื้อที่ระลึกงานคืนสู่เหย้า">
       <div class="sizes">${sizes.map((s, i) => `<span>${s} · ${36 + i * 2}”</span>`).join('')}</div>
       <p class="muted">ขนาดรอบอก (นิ้ว) · คลาดเคลื่อน ±0.5 นิ้ว</p>
     </section>
@@ -595,20 +595,43 @@ async function admin() {
           </div>
           <label>ค่าจัดส่ง / คำสั่งจอง<input class="ui-input ui-input-bordered" name="shipping" type="number" min="0" step="0.01" required value="${settings.shipping}"></label>
           <label>วันที่จัดงาน<input class="ui-input ui-input-bordered" name="event" required value="${esc(settings.event)}"></label>
+          <fieldset class="shirt-image-settings"><legend>ภาพเสื้อที่ระลึก</legend>
+            <img id="shirt-image-preview" src="${esc(settings.shirt_image || 'assets/shirt.png')}" alt="ภาพเสื้อที่ใช้งาน" style="width:100%;max-width:440px;border-radius:12px;margin:12px 0">
+            <label>เปลี่ยนภาพเสื้อ<input class="ui-file-input ui-file-input-bordered" id="shirt-image-file" type="file" accept="image/png,image/jpeg,image/webp"><small class="muted">JPG, PNG หรือ WebP ไม่เกิน 1 MB · แสดงทั้งหน้าหลักและหน้าจองเสื้อ</small></label>
+            <p id="shirt-image-error" role="status" class="muted"></p>
+            <button type="button" id="shirt-image-reset" class="btn ui-btn">ใช้ภาพเสื้อเดิมของเว็บไซต์</button>
+          </fieldset>
           ${accountSettingsFields()}
           ${[['donate', 'QR ทอดผ้าป่า'], ['fund', 'QR กองทุนช่างกล'], ['tables', 'QR โต๊ะจีน'], ['shirts', 'QR เสื้อ']].map(([k, t]) => `
             <label>${t}<input class="ui-file-input ui-file-input-bordered" type="file" accept="image/png,image/jpeg" data-qr="${k}"><small class="muted">PNG / JPG ไม่เกิน 1 MB · ไม่เลือกไฟล์ใหม่จะใช้ภาพเดิม</small>${settings.qr[k] ? `<img src="${settings.qr[k]}" width="100" alt="${t} ที่บันทึกไว้" style="margin-top:8px">` : '<small class="muted">ยังไม่ได้อัปโหลด QR</small>'}</label>
           `).join('')}
-          <button class="btn ui-btn ui-btn-primary" style="margin-top:12px">บันทึกการตั้งค่า</button>
+          <button type="submit" class="btn ui-btn ui-btn-primary" style="margin-top:12px">บันทึกการตั้งค่า</button>
         </form>
       </section>`;
+    let pendingShirtImage = settings.shirt_image || '';
+    let shirtImageBusy = false;
+    const shirtInput = $('#shirt-image-file');
+    shirtInput.onchange = async () => {
+      const file = shirtInput.files[0]; if (!file) return;
+      shirtImageBusy = true;
+      try {
+        if (!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size > 1024*1024) throw new Error('กรุณาเลือก JPG, PNG หรือ WebP ไม่เกิน 1 MB');
+        const image = await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('อ่านภาพไม่สำเร็จ'));reader.readAsDataURL(file);});
+        await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>img.width*img.height<=40000000?resolve():reject(new Error('ภาพมีขนาดใหญ่เกินไป'));img.onerror=()=>reject(new Error('ไฟล์ภาพไม่ถูกต้อง'));img.src=image;});
+        pendingShirtImage = image; $('#shirt-image-preview').src = image;
+        $('#shirt-image-error').textContent = 'ภาพพร้อมใช้งาน · กดบันทึกการตั้งค่าเพื่อยืนยัน';
+      } catch(error) {shirtInput.value='';$('#shirt-image-error').textContent=error.message;}
+      finally {shirtImageBusy=false;}
+    };
+    $('#shirt-image-reset').onclick = () => {if(shirtImageBusy)return;pendingShirtImage='';shirtInput.value='';$('#shirt-image-preview').src='assets/shirt.png';$('#shirt-image-error').textContent='กดบันทึกการตั้งค่าเพื่อกลับไปใช้ภาพเดิม';};
     $('#settings').onsubmit = async e => {
       e.preventDefault();
       const form = e.target;
-      const button = form.querySelector('button');
+      if(shirtImageBusy){$('#shirt-image-error').textContent='กรุณารออ่านภาพให้เสร็จก่อน';return;}
+      const button = form.querySelector('button[type=submit]');
       button.disabled = true;
       try {
-        const draft = { ...settings, qr: { ...settings.qr } };
+        const draft = { ...settings, shirt_image: pendingShirtImage, qr: { ...settings.qr } };
         for (const k of ['shirt', 'table', 'shipping']) draft[k] = Number(form.elements[k].value);
         draft.event = form.elements.event.value;
         draft.accounts = readAccountSettings(form);
@@ -629,7 +652,7 @@ async function admin() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'บันทึกไม่สำเร็จ');
         settings = data;
-        modal('<h2>บันทึกแล้ว ✓</h2><p>บันทึกราคา บัญชี และ QR ลงฐานข้อมูลแล้ว รายการเดิมยังคงยอดเดิม</p><button class="btn ui-btn ui-btn-primary full" onclick="closeModal();location.hash=\'home\'">ดูหน้าหลัก</button>');
+        modal('<h2>บันทึกแล้ว ✓</h2><p>บันทึกราคา ภาพเสื้อ บัญชี และ QR ลงฐานข้อมูลแล้ว รายการเดิมยังคงยอดเดิม</p><button class="btn ui-btn ui-btn-primary full" onclick="closeModal();location.hash=\'home\'">ดูหน้าหลัก</button>');
       } catch (error) {
         alert(error.message || 'เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ');
       } finally {

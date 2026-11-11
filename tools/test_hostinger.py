@@ -254,4 +254,15 @@ class Hostinger(unittest.TestCase):
    self.assertEqual(response[2]['Cache-Control'],'no-store')
   finally:
    for ref in refs:self.sql("DELETE FROM order_items WHERE order_ref='"+ref+"'; DELETE FROM order_audit WHERE ref='"+ref+"'; DELETE FROM orders WHERE ref='"+ref+"'",self.name)
+ def test_18_shirt_image_settings(self):
+  image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB1sAAAAASUVORK5CYII='
+  original=self.request('/api/settings')[1]
+  data=dict(original,shirt_image=image,qr={**original['qr'],'donate':image})
+  status,saved,_=self.post('/api/admin/settings',data);self.assertEqual(status,200,saved)
+  self.assertEqual(self.request('/api/settings')[1]['shirt_image'],image)
+  self.assertEqual(saved['qr']['donate'],image)
+  for value in ['javascript:alert(1)','data:image/jpeg;base64,'+image.split(',')[1], 'data:image/png;base64,'+base64.b64encode(b'x'*(1024*1024+1)).decode()]:
+   data=dict(saved,shirt_image=value);self.assertEqual(self.post('/api/admin/settings',data)[0],400)
+  data=dict(saved,shirt_image='');status,reset,_=self.post('/api/admin/settings',data);self.assertEqual(status,200);self.assertEqual(reset['shirt_image'],'')
+  original['revision']=reset['revision'];self.assertEqual(self.post('/api/admin/settings',original)[0],200)
 if __name__=='__main__':unittest.main(verbosity=2)
