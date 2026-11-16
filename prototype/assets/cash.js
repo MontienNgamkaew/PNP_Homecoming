@@ -23,7 +23,7 @@ function renderCashAdmin(body, preset=null) {
     ${!editing?taxRequestFields():''}
     <label>จำนวนเงิน (บาท)<input name="amount" class="ui-input ui-input-bordered" type="number" min="1" step="0.01" required ${editing?'readonly':''} value="${editing?preset.amount_cents/100:''}"></label>
     <label>วันที่รับเงิน<input name="received_date" class="ui-input ui-input-bordered" type="date" max="${today}" required value="${esc(preset?.cash_receipt?.received_date||today)}"></label>
-    <label>ผู้รับเงิน<input name="collector" class="ui-input ui-input-bordered" required minlength="2" maxlength="150" value="${esc(preset?.cash_receipt?.collector||'')}"></label>
+    <label>ผู้รับเงิน<input name="collector" class="ui-input ui-input-bordered" required minlength="2" maxlength="150" value="${esc(preset?.cash_receipt?.collector||adminIdentity?.display_name||'')}"></label>
     <label>หมายเหตุ<textarea name="note" class="ui-textarea ui-textarea-bordered" maxlength="1000">${esc(preset?.cash_receipt?.note||'')}</textarea></label>
     ${editing?'<label>เหตุผลแก้ไข<textarea class="ui-textarea ui-textarea-bordered" name="reason" required minlength="3" maxlength="500"></textarea></label>':'<label id="cash-attachment">ภาพใบรับเงิน (ไม่บังคับ)<input name="evidence" class="ui-file-input ui-file-input-bordered" type="file" accept="image/png,image/jpeg,image/webp,application/pdf"><small>ไม่เกิน 5 MB</small></label>'}
     <button type="submit" class="ui-btn ui-btn-primary full">${editing?'บันทึกการแก้ไข':'บันทึกรับเงินสด · รอตรวจสอบ'}</button><p id="cash-status" role="status"></p>

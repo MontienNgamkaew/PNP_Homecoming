@@ -13,8 +13,11 @@ try {
     $raw=file_get_contents('php://input',false,null,0,7*1024*1024+1);if(strlen($raw)>7*1024*1024)fail(413,'ไฟล์ใหญ่เกินไป');
     $d=json_decode($raw,true,512,JSON_THROW_ON_ERROR);if(!is_array($d)||!str_starts_with(ltrim($raw),'{'))fail(400,'ข้อมูลไม่ถูกต้อง');
  }
- if(str_starts_with($path,'/api/admin/')&&$path!=='/api/admin/login')auth();
+ if(str_starts_with($path,'/api/admin/')&&$path!=='/api/admin/login'){auth();if($method==='POST'){$GLOBALS['portal_admin_path']=$path;$GLOBALS['portal_admin_input']=$d;begin_admin_mutation();}}
  if($method==='GET'){
+    if($path==='/api/admin/me')reply(200,['user'=>$GLOBALS['portal_admin']]);
+    if($path==='/api/admin/users'){require_superadmin();reply(200,['items'=>array_map('admin_public',query('SELECT * FROM admin_users ORDER BY id')->fetchAll())]);}
+    if($path==='/api/admin/activity')reply(200,admin_activity_list($_GET));
     if($path==='/api/admin/tax-requests.csv')export_tax_requests_csv($_GET);
     if($path==='/api/admin/tax-requests')reply(200,tax_requests_list($_GET));
     if($path==='/api/admin/tax-request')reply(200,tax_request_detail(text($_GET['ref']??null,1,40,'เลขอ้างอิง')));
@@ -36,11 +39,11 @@ try {
     if(preg_match('~^/api/posters/([a-zA-Z0-9-]+)/image$~D',$path,$m)){$r=query('SELECT mime,image FROM posters WHERE id=? AND deleted_at IS NULL',[$m[1]])->fetch();if(!$r)fail(404,'ไม่พบโปสเตอร์');$hash=hash('sha256',$r['image']);$headers=['ETag'=>'"'.$hash.'"','Cache-Control'=>($_GET['v']??'')===substr($hash,0,16)?'public, max-age=86400, immutable':'public, max-age=0, must-revalidate'];if(($_SERVER['HTTP_IF_NONE_MATCH']??'')==='"'.$hash.'"')reply(304,'',$r['mime'],$headers);reply(200,$r['image'],$r['mime'],$headers);}
     if($path==='/api/tables'){$rows=query('SELECT table_number,status FROM table_bookings')->fetchAll();$booked=[];$pending=0;$confirmed=0;foreach($rows as $r){$booked[(string)$r['table_number']]=$r['status'];$pending+=$r['status']==='pending';$confirmed+=$r['status']==='confirmed';}reply(200,['booked'=>(object)$booked,'summary'=>['total'=>61,'available'=>61-count(array_filter($rows,fn($r)=>(int)$r['table_number']<=61)),'pending'=>$pending,'confirmed'=>$confirmed]]);}
     if($path==='/api/blessings/random')reply(200,['blessing'=>query('SELECT message FROM blessings WHERE active=1 ORDER BY RAND() LIMIT 1')->fetchColumn()?:'ขอให้ท่านและครอบครัวมีความสุขความเจริญ']);
-    if($path==='/api/admin/ticket'){reply(200,electronic_ticket(text($_GET['ref']??null,1,40,'เลขอ้างอิง')));}
+    if($path==='/api/admin/ticket'){$ref=text($_GET['ref']??null,1,40,'เลขอ้างอิง');$ticket=electronic_ticket($ref);admin_activity('ticket_viewed','order',$ref);reply(200,$ticket);}
     if($path==='/api/admin/cash-order'){$ref=text($_GET['ref']??null,6,40,'เลขอ้างอิง');$r=query('SELECT * FROM orders WHERE ref=?',[$ref])->fetch();if(!$r)fail(404,'ไม่พบรายการ');reply(200,public_order($r));}
     if($path==='/api/admin/blessings'){$rows=query('SELECT * FROM blessings ORDER BY id')->fetchAll();foreach($rows as &$r){$r['id']=(int)$r['id'];$r['active']=(int)$r['active'];}reply(200,$rows);}
     if($path==='/api/admin/orders'){
-       [$where,$args]=order_search();$page=max(1,min(100000,(int)($_GET['page']??1)));$offset=($page-1)*100;$rows=query("SELECT ref,type,name,phone,amount_cents,transferred,delivery_method,recipient_name,shipping_address,postcode,tables_list,category,status,created,pricing_snapshot,mime FROM orders$where ORDER BY created DESC,ref DESC LIMIT 100 OFFSET $offset",$args)->fetchAll();reply(200,array_map('public_order',$rows));
+       [$where,$args]=order_search();$page=max(1,min(100000,(int)($_GET['page']??1)));$offset=($page-1)*100;$rows=query("SELECT ref,type,name,phone,amount_cents,transferred,delivery_method,recipient_name,shipping_address,postcode,tables_list,category,status,created,pricing_snapshot,mime FROM orders$where ORDER BY created DESC,ref DESC LIMIT 100 OFFSET $offset",$args)->fetchAll();reply(200,admin_attributed_orders($rows));
     }
     if($path==='/api/admin/summary'){
        $r=query("SELECT COUNT(*) AS total,COALESCE(SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END),0) AS confirmed_cents,SUM(status='pending') AS pending FROM orders")->fetch();
@@ -49,18 +52,17 @@ try {
        $r['booked_tables']=(int)query('SELECT COUNT(*) FROM table_bookings')->fetchColumn();foreach(['total','confirmed_cents','pending'] as $k)$r[$k]=(int)$r[$k];[$where,$args]=order_search();$filtered=query("SELECT COUNT(*) AS filtered_count,COALESCE(SUM(amount_cents),0) AS filtered_cents,COALESCE(SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END),0) AS filtered_confirmed_cents FROM orders".$where,$args)->fetch();foreach($filtered as $k=>$v)$r[$k]=(int)$v;
        $r['by_type']=[];foreach(query("SELECT type,COUNT(*) AS total,COALESCE(SUM(status='pending'),0) AS pending,COALESCE(SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END),0) AS confirmed_cents FROM orders GROUP BY type")->fetchAll() as $group){foreach(['total','pending','confirmed_cents'] as $k)$group[$k]=(int)$group[$k];$r['by_type'][$group['type']]=$group;}$r['page_size']=100;reply(200,$r);
     }
-    if(preg_match('~^/api/admin/order-slip/([A-Za-z0-9-]+)$~D',$path,$m)){$r=query('SELECT mime,slip FROM orders WHERE ref=?',[$m[1]])->fetch();if(!$r||$r['mime']==='text/plain')fail(404,'รายการนี้ไม่มีเอกสารแนบ');$ext=['image/png'=>'png','image/jpeg'=>'jpg','application/pdf'=>'pdf','image/webp'=>'webp'][$r['mime']]??'bin';reply(200,$r['slip'],$r['mime'],['Content-Disposition'=>'inline; filename="'.$m[1].'.'.$ext.'"','Content-Security-Policy'=>"sandbox; default-src 'none'"]);}
+    if(preg_match('~^/api/admin/order-slip/([A-Za-z0-9-]+)$~D',$path,$m)){$r=query('SELECT mime,slip FROM orders WHERE ref=?',[$m[1]])->fetch();if(!$r||$r['mime']==='text/plain')fail(404,'รายการนี้ไม่มีเอกสารแนบ');admin_activity('slip_viewed','order',$m[1]);$ext=['image/png'=>'png','image/jpeg'=>'jpg','application/pdf'=>'pdf','image/webp'=>'webp'][$r['mime']]??'bin';reply(200,$r['slip'],$r['mime'],['Content-Disposition'=>'inline; filename="'.$m[1].'.'.$ext.'"','Content-Security-Policy'=>"sandbox; default-src 'none'"]);}
     fail(404,'ไม่พบหน้า');
  }
- if($path==='/api/admin/login'){
-    limited('login',10);$hash=$c['admin_password_hash']??'';
-    if(!password_get_info($hash)['algo'])fail(503,'ยังไม่ได้ตั้งรหัสผ่านผู้ดูแล');
-    if(!is_string($d['password']??null)||strlen($d['password'])<8||strlen($d['password'])>1024||!password_verify($d['password'],$hash))fail(401,'รหัสผ่านไม่ถูกต้อง');
-    $token=bin2hex(random_bytes(32));query('DELETE FROM admin_sessions WHERE expires<?',[time()]);query('INSERT INTO admin_sessions VALUES (?,?)',[hash('sha256',$token),time()+3600]);
-    setcookie('admin',$token,['expires'=>time()+3600,'path'=>'/','secure'=>$c['secure_cookie']??true,'httponly'=>true,'samesite'=>'Strict']);reply(200,['ok'=>true]);
- }
- if($path==='/api/admin/logout'){query('DELETE FROM admin_sessions WHERE token_hash=?',[hash('sha256',$_COOKIE['admin']??'')]);setcookie('admin','',['expires'=>1,'path'=>'/','secure'=>$c['secure_cookie']??true,'httponly'=>true,'samesite'=>'Strict']);reply(200,['ok'=>true]);}
+ if($path==='/api/admin/login')reply(200,admin_login($d));
+ if($path==='/api/admin/logout'){query('DELETE FROM admin_user_sessions WHERE token_hash=?',[hash('sha256',$_COOKIE['admin']??'')]);setcookie('admin','',['expires'=>1,'path'=>'/','secure'=>$c['secure_cookie']??true,'httponly'=>true,'samesite'=>'Strict']);reply(200,['ok'=>true]);}
+ if($path==='/api/admin/users-create')reply(201,admin_users_create($d));
+ if($path==='/api/admin/users-update')reply(200,admin_users_update($d));
+ if($path==='/api/admin/users-password')reply(200,admin_reset_password($d));
+ if($path==='/api/admin/password')reply(200,admin_change_password($d));
  if($path==='/api/admin/settings'){
+    require_superadmin();
     $new=validated_settings($d);$saved=transaction(function()use($new,$d){$old=settings(true);if(($d['revision']??null)!==$old['revision'])fail(409,'มีผู้ดูแลแก้การตั้งค่าแล้ว กรุณาโหลดหน้าใหม่ก่อนบันทึก');query('INSERT INTO settings_audit(old_config,new_config,at) VALUES (?,?,?)',[js($old),js($new),time()]);query('UPDATE app_settings SET config=?,revision=revision+1 WHERE id=1',[js($new)]);return settings();});reply(200,$saved);
  }
  if($path==='/api/admin/posters'){

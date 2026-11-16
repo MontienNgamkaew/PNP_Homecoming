@@ -41,6 +41,7 @@ function report_table_names(string $list): string {
 function export_report_csv(array $f,string $dataset): never {
  if(!in_array($dataset,['summary','orders','shirt-sizes','shirt-people','shirt-lines'],true))fail(400,'ประเภทรายงานไม่ถูกต้อง');
  if(str_starts_with($dataset,'shirt-')){if(!in_array($f['type'],['all','shirts'],true))fail(400,'กรุณาเลือกประเภทเสื้อ');$f['type']='shirts';}
+ admin_activity('report_exported','report',$dataset);
  $summary=report_summary($f);[$where,$args,$cash]=report_where($f);
  // A repeatable read makes the sizes/people rows in a file one consistent snapshot.
  db()->beginTransaction();

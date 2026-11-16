@@ -40,15 +40,15 @@ php "$root/portal-private/backup.php" "$partial"
 # Validate all current tables before publishing the backup filename.
 php -r '
 $d=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);
-$tables=["app_settings","reference_counter","orders","table_bookings","order_items","order_audit","settings_audit","blessings","posters","ticket_redemptions","tax_requests","tax_request_audit"];
+$tables=["admin_users","admin_activity","app_settings","reference_counter","orders","table_bookings","order_items","order_audit","settings_audit","blessings","posters","ticket_redemptions","tax_requests","tax_request_audit"];
 if(($d["format"]??"")!=="portal-backup-v1"||array_diff($tables,array_keys($d["tables"]??[])))throw new RuntimeException("Incomplete backup");
 if(!isset($d["tables"]["app_settings"][0],$d["tables"]["reference_counter"][0]))throw new RuntimeException("Missing settings/counter");
-echo "Validated 12 backup tables including tax data.\n";
+echo "Validated 14 backup tables including tax data and administrator history.\n";
 ' "$partial"
 mv "$partial" "$target"
 chmod 600 "$target"
 php -r '
-$p=$argv[1];$s=["created_utc"=>gmdate("c"),"file"=>basename($p),"sha256"=>hash_file("sha256",$p),"bytes"=>filesize($p),"table_count"=>12];
+$p=$argv[1];$s=["created_utc"=>gmdate("c"),"file"=>basename($p),"sha256"=>hash_file("sha256",$p),"bytes"=>filesize($p),"table_count"=>14];
 file_put_contents($p.".sha256",$s["sha256"]."  ".basename($p)."\n");
 file_put_contents(dirname($p)."/.latest-success.tmp",json_encode($s,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");
 rename(dirname($p)."/.latest-success.tmp",dirname($p)."/latest-success.json");

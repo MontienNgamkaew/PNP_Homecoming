@@ -345,7 +345,7 @@ function modal(html) {
   $('#modal').hidden = false;
   $('#modal').querySelector('button,input')?.focus();
 }
-function closeModal() { clearAdminTicket(); clearSlipPreview(); resetBlessingCard(); const root=$('#modal'); root.hidden=true; if(root.querySelector('#reissued-token, #slip-preview, #admin-ticket-preview, #tax-editor')) root.innerHTML=''; }
+function closeModal() { clearAdminTicket(); clearSlipPreview(); resetBlessingCard(); const root=$('#modal'); root.hidden=true; if(root.querySelector('#reissued-token, #slip-preview, #admin-ticket-preview, #tax-editor, #admin-user-editor, #admin-password-editor, #admin-activity-editor')) root.innerHTML=''; }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 function showPoster() { showCurrentPoster(); }
 
@@ -435,7 +435,7 @@ async function admin() {
   if (tab === 'overview') { adminCategory=''; adminPaymentStatus=''; adminSearch=''; adminPage=1; }
   app.innerHTML = head('ภาพรวมผู้ดูแล', 'ระบบจัดการรายการจองและตรวจสอบสลิปจริง') + `
     <div class="tabs">
-      ${[['overview', 'ภาพรวม'], ['cash', 'บันทึกรับเงินสด'], ['reports', 'รายงาน / CSV'], ['tax', 'การลดหย่อนภาษี'], ['orders', 'รายการทั้งหมด (' + adminOrders.length + ')'], ['blessings', 'คำอวยพร (' + adminBlessings.length + ')'], ['posters', 'โปสเตอร์'], ['hero', 'ข้อความแบนเนอร์'], ['settings', 'ตั้งค่าเว็บไซต์']].map(([v, t]) => `
+      ${[['overview', 'ภาพรวม'], ['cash', 'บันทึกรับเงินสด'], ['reports', 'รายงาน / CSV'], ['tax', 'การลดหย่อนภาษี'], ['orders', 'รายการทั้งหมด (' + adminOrders.length + ')'], ['blessings', 'คำอวยพร (' + adminBlessings.length + ')'], ['posters', 'โปสเตอร์'], ['hero', 'ข้อความแบนเนอร์'], ['settings', 'ตั้งค่าเว็บไซต์'], ...(settings.backend==='php'?[['users','ผู้ใช้งานผู้ดูแล'],['activity','ประวัติผู้ดำเนินการ']]:[])].map(([v, t]) => `
         <button class="ui-btn ui-btn-sm ${tab === v ? 'ui-btn-primary' : 'ui-btn-ghost'}" data-admin-tab="${v}" onclick="tab='${v}';admin()">${t}</button>
       `).join('')}
     </div>
@@ -445,11 +445,12 @@ async function admin() {
     const res = await fetch('/api/admin/orders?' + adminOrderQuery());
     if (renderVersion !== adminRenderVersion || location.hash !== '#admin') return;
     if (res.status === 401) {
+      adminIdentity=null;
       $('#admin-body').innerHTML = `
         <section class="card ui-card" style="max-width:440px;margin:20px auto">
           <h2>เข้าสู่ระบบผู้ดูแล</h2>
           <p class="muted">กรุณากรอกรหัสผ่านผู้ดูแลระบบ</p>
-          <form id="admin-login-form">
+          <form id="admin-login-form"><label>ชื่อผู้ใช้<input class="ui-input ui-input-bordered" name="username" value="admin" required autocomplete="username" maxlength="50"></label>
             <label>รหัสผ่านผู้ดูแล
               <input class="ui-input ui-input-bordered" name="password" type="password" required placeholder="รหัสผ่านอย่างน้อย 8 ตัวอักษร" autocomplete="current-password">
             </label>
@@ -463,7 +464,7 @@ async function admin() {
         const lres = await fetch('/api/admin/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: pwd })
+          body: JSON.stringify({ username:e.target.elements.username.value.trim(), password: pwd })
         });
         const ldata = await lres.json();
         if (lres.ok) {
@@ -478,6 +479,7 @@ async function admin() {
     }
     if (res.ok) {
       adminOrders = await res.json();
+      if(settings.backend==='php'){const me=await fetch('/api/admin/me',{cache:'no-store'});if(!me.ok)throw new Error('กรุณาเข้าสู่ระบบใหม่');adminIdentity=(await me.json()).user;}
       const summaryResponse = await fetch('/api/admin/summary?' + adminOrderQuery()); if (!summaryResponse.ok) throw new Error('โหลดภาพรวมไม่สำเร็จ'); adminSummary = await summaryResponse.json();
       if (renderVersion !== adminRenderVersion || location.hash !== '#admin') return;
       if (tab==='orders' && adminPage>Math.max(1,Math.ceil(adminSummary.filtered_count/100))) {adminPage=Math.max(1,Math.ceil(adminSummary.filtered_count/100));return admin();}
@@ -498,6 +500,11 @@ async function admin() {
   const ordersTab = document.querySelector('[data-admin-tab="orders"]');
   if (ordersTab && adminSummary) ordersTab.textContent = `รายการทั้งหมด (${money(adminSummary.total)})`;
   const body = $('#admin-body');
+  if(settings.backend==='php'&&adminIdentity?.role!=='superadmin'){
+    document.querySelectorAll('[data-admin-tab="users"],[data-admin-tab="activity"],[data-admin-tab="settings"],[data-admin-tab="hero"]').forEach(e=>e.remove());
+    if(['users','activity','settings','hero'].includes(tab)){tab='overview';return admin();}
+  }
+
   body.addEventListener('change', event => {if(event.target.id==='admin-payment-status'){adminPaymentStatus=event.target.value;adminPage=1;tab='orders';admin();}});
   body.addEventListener('submit', event => { if(event.target.id==='admin-search'){event.preventDefault();adminSearch=event.target.elements.query.value.trim();adminPage=1;tab='orders';admin();} });
   body.addEventListener('click', event => {
@@ -506,13 +513,18 @@ async function admin() {
     const category=event.target.closest('[data-order-category]'); if(category){adminCategory=category.dataset.orderCategory;adminPage=1;tab='orders';admin();}
     const reissue=event.target.closest('[data-reissue-ticket]'); if(reissue)openTicketReissue(reissue.dataset.reissueTicket);
     const receipt=event.target.closest('[data-cash-edit]');if(receipt){const order=adminOrders.find(o=>o.ref===receipt.dataset.cashEdit);if(order)renderCashAdmin(body,order);}
+    const history=event.target.closest('[data-order-history]');if(history)openAdminActivity(history.dataset.orderHistory);
     const edit=event.target.closest('[data-edit-order]'); if(edit)openOrderEditor(edit.dataset.editOrder);
     const page=event.target.closest('[data-admin-page]'); if(page){adminPage=Number(page.dataset.adminPage);tab='orders';admin();}
  const button=event.target.closest('[data-edit-blessing]'); if(button){const entry=adminBlessings.find(b=>b.id===Number(button.dataset.editBlessing)); if(entry)editBlessing(entry.id,entry.message);} });
 
+  if(settings.backend==='php'&&adminIdentity)body.insertAdjacentHTML('beforebegin',`<div class="admin-identity"><b>${esc(adminIdentity.display_name)}</b><span>${esc(adminIdentity.username)} · ${adminRoleLabels[adminIdentity.role]}</span><button type="button" id="admin-own-password" class="ui-btn ui-btn-sm ui-btn-outline">เปลี่ยนรหัสผ่านของฉัน</button></div>`);
+  if($('#admin-own-password'))$('#admin-own-password').onclick=()=>openAdminPassword();
   body.insertAdjacentHTML('beforebegin', '<button class="ui-btn ui-btn-sm ui-btn-ghost" id="admin-logout">ออกจากระบบ</button>');
-  $('#admin-logout').onclick = async () => { closeModal(); const r = await fetch('/api/admin/logout', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); if(r.ok){adminOrders=[];adminSummary=null;adminPage=1;admin();} else alert('ออกจากระบบไม่สำเร็จ'); };
+  $('#admin-logout').onclick = async () => { closeModal(); const r = await fetch('/api/admin/logout', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); if(r.ok){adminIdentity=null;adminOrders=[];adminSummary=null;adminPage=1;admin();} else alert('ออกจากระบบไม่สำเร็จ'); };
 
+  if(tab==='users'){renderAdminUsers(body);return;}
+  if(tab==='activity'){renderAdminActivity(body);return;}
   if (tab === 'blessings') {
     body.innerHTML = `<button class="btn ui-btn ui-btn-outline mb-4" onclick="prepareBlessingAudio();blessingPreview()">ชมการ์ดอวยพรและเสียง ♫</button>
       <section class="card ui-card" style="margin-bottom:20px">
@@ -783,7 +795,7 @@ async function loadSettings() {
 async function route() {
   stopPosterCarousel();
   stopTotals();
-  if(document.querySelector('#slip-preview, #admin-ticket-preview, #tax-editor'))closeModal();
+  if(document.querySelector('#slip-preview, #admin-ticket-preview, #tax-editor, #admin-user-editor, #admin-password-editor, #admin-activity-editor'))closeModal();
   const version = ++routeVersion;
   app.innerHTML = '<p class="muted" role="status">กำลังโหลดข้อมูลล่าสุด…</p>';
   try { await Promise.all([loadSettings(), loadPosters()]); } catch (error) {

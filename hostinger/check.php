@@ -19,10 +19,11 @@ try{
  if($mode&0077)echo "WARN Private config should normally have mode 600; confirm host account isolation.\n";
  $version=(string)query('SELECT VERSION()')->fetchColumn();check_result('MySQL/MariaDB connection',db()->getAttribute(PDO::ATTR_DRIVER_NAME)==='mysql',$version);
  $packet=(int)query('SELECT @@max_allowed_packet')->fetchColumn();check_result('max_allowed_packet >= 8 MiB',$packet>=8*1024*1024,(string)$packet);
- $required=['app_settings','reference_counter','orders','table_bookings','order_items','order_audit','settings_audit','blessings','posters','limits','admin_sessions','ticket_redemptions','tax_requests','tax_request_audit'];
+ $required=['admin_users','admin_user_sessions','admin_activity','app_settings','reference_counter','orders','table_bookings','order_items','order_audit','settings_audit','blessings','posters','limits','admin_sessions','ticket_redemptions','tax_requests','tax_request_audit'];
  $tables=query('SELECT TABLE_NAME,ENGINE,TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()')->fetchAll();$indexed=array_column($tables,null,'TABLE_NAME');
  foreach($required as $table){$r=$indexed[$table]??null;check_result('Table '.$table,$r&&strtoupper($r['ENGINE']??'')==='INNODB'&&str_starts_with($r['TABLE_COLLATION']??'','utf8mb4'));}
  if(!$failed){
+   check_result('Active superadministrator',(int)query("SELECT COUNT(*) FROM admin_users WHERE role='superadmin' AND active=1")->fetchColumn()>0);
    $settings=settings();check_result('Four account settings',count($settings['accounts'])===4);
    foreach($settings['accounts'] as $kind=>$account)check_result('Account '.$kind,isset($account['name'],$account['bank'],$account['number'])&&(bool)preg_match('/^[0-9]{6,20}$/D',$account['number']));
    echo 'INFO Uploaded QR: '.count((array)$settings['qr'])."/4; missing QR uses bank details. Verify recipient in banking app.\n";

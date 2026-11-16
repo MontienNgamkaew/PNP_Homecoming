@@ -8,4 +8,5 @@ transaction(function(){query('INSERT IGNORE INTO app_settings VALUES (1,?,1)',[j
 $assets=$argv[1]??dirname(__DIR__).'/public_html/assets';
 foreach([['default-compact','คืนสู่เหย้าศิษย์เก่า ครั้งที่ 2','poster-compact-v1.webp'],['default-celebration','ทอดผ้าป่าเพื่อการศึกษา ครบรอบ 30 ปี','poster-celebration-v2.webp']] as [$id,$title,$file]){if(is_file($assets.'/'.$file))query('INSERT IGNORE INTO posters(id,title,mime,image,created) VALUES (?,?,?,?,?)',[$id,$title,'image/webp',file_get_contents($assets.'/'.$file),time()]);}
 if(!query('SELECT id FROM blessings LIMIT 1')->fetch())query('INSERT INTO blessings(message,active,created_at) VALUES (?,1,?)',['ขออานุภาพแห่งบุญกุศล ดลบันดาลให้ท่านและครอบครัวมีความสุขความเจริญ',time()]);
+ensure_admin_bootstrap();
 echo "Installation checked; existing records preserved.\n";

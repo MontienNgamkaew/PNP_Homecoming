@@ -61,6 +61,7 @@ function export_tax_requests_csv(array $input): never {
  [$where,$args]=tax_request_filter($input);
  $types=['donate'=>'ผ้าป่า','fund'=>'กองทุนช่างกล'];$payments=['pending'=>'รอตรวจสอบยอด','confirmed'=>'ยืนยันยอดแล้ว','rejected'=>'ยกเลิก / ไม่ผ่าน'];
  $states=['requested'=>'รอตรวจสอบคำขอ','preparing'=>'กำลังจัดทำ','ready'=>'พร้อมรับ / พร้อมส่ง','delivered'=>'ส่งมอบแล้ว','cancelled'=>'ยกเลิกคำขอ'];$deliveries=['pickup'=>'รับด้วยตนเองที่วิทยาลัย','line'=>'ส่งทาง Line ID','post'=>'ส่งทางไปรษณีย์'];
+ admin_activity('tax_exported','report','tax-'.$dataset);
  $stmt=query('SELECT t.*,o.type,o.name,o.phone,o.amount_cents,o.status AS payment_status,o.pricing_snapshot,o.created AS order_created,o.transferred FROM tax_requests t JOIN orders o ON o.ref=t.order_ref'.$where.' ORDER BY t.created,t.order_ref',$args);
  $tz=new DateTimeZone('Asia/Bangkok');$date=fn($v)=>(new DateTimeImmutable('@'.(int)$v))->setTimezone($tz)->format('Y-m-d H:i:s');$money=fn($v)=>number_format((int)$v/100,2,'.','');
  header('Content-Type: text/csv; charset=utf-8');header('Content-Disposition: attachment; filename="pnp-tax-'.$dataset.'-'.gmdate('Ymd-His').'.csv"');header('Cache-Control: no-store, private');header('X-Content-Type-Options: nosniff');

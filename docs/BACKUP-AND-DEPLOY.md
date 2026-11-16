@@ -12,9 +12,9 @@ Backups are stored outside `public_html` in:
 
 `/home/u651170081/domains/pnp2.montien.tech/.database-backups/`
 
-The directory is mode 700; backup and checksum files are mode 600. Each run has a separate UTC timestamp and Actions run ID. A lock prevents overlapping backups. A new backup becomes final only after JSON validation confirms all 12 required tables, including `tax_requests` and `tax_request_audit`. `latest-success.json` records the last successful filename, SHA-256, byte count and UTC time; it contains no donor records. Failed or incomplete backups do not replace this record. Existing backup files are retained.
+The directory is mode 700; backup and checksum files are mode 600. Each run has a separate UTC timestamp and Actions run ID. A lock prevents overlapping backups. A new backup becomes final only after JSON validation confirms all 14 required tables, including `tax_requests` and `tax_request_audit`. `latest-success.json` records the last successful filename, SHA-256, byte count and UTC time; it contains no donor records. Failed or incomplete backups do not replace this record. Existing backup files are retained.
 
-The backup includes settings and account/QR details, orders and slips, booked tables, shirt items, order/settings audit history, blessings, posters, ticket redemptions and tax requests/history. Administrator sessions and transient rate-limit records are deliberately not restored. The host's private `config.php` credentials are not included in the JSON database backup.
+The backup includes settings and account/QR details, orders and slips, booked tables, shirt items, order/settings audit history, blessings, posters, ticket redemptions tax requests/history, administrator accounts (password hashes) and administrator activity history. Administrator sessions and transient rate-limit records are deliberately not restored. The host's private `config.php` credentials are not included in the JSON database backup.
 
 Verify a backup's checksum before restoring. Use `restore.php` only with a **new empty database** and private configuration pointing to that new database. Never point a restore verification at production. Local restore checks can compare every table's restored contents to the original backup without printing personal data.
 

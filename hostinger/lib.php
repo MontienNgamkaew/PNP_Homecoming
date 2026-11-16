@@ -29,6 +29,7 @@ function js(mixed $value): string {return json_encode($value,JSON_UNESCAPED_UNIC
 function fail(int $code,string $message): never {throw new PortalError($message,$code);}
 class PortalError extends RuntimeException {}
 function reply(int $code,mixed $data,string $mime='application/json; charset=utf-8',array $headers=[]): never {
+    if(function_exists('finish_admin_mutation'))finish_admin_mutation($code,$data);
     http_response_code($code);header('Content-Type: '.$mime);header('Cache-Control: no-store');
     header('X-Content-Type-Options: nosniff');header('Referrer-Policy: no-referrer');header('X-Frame-Options: DENY');
     header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
@@ -77,9 +78,8 @@ function validated_settings(array $d): array {
     $r['payment_live']=$d['payment_live']??false;
     if($r['payment_live']&&count((array)$r['qr'])!==4)fail(400,'กรุณาตั้ง QR จริงครบทั้ง 4 ประเภทก่อนเปิดรับชำระ');return $r;
 }
-function auth(): void {
-    $t=$_COOKIE['admin']??'';if(!is_string($t)||!query('SELECT token_hash FROM admin_sessions WHERE token_hash=? AND expires>?',[hash('sha256',$t),time()])->fetch())fail(401,'กรุณาเข้าสู่ระบบ');
-}
+function auth(): void {authenticated_admin();}
+
 function limited(string $scope,int $max): void {
     // REMOTE_ADDR is supplied by web server. Do not accept client-controlled X-Forwarded-For.
     $key=hash('sha256',$scope.($_SERVER['REMOTE_ADDR']??''));$now=time();
@@ -88,6 +88,7 @@ function limited(string $scope,int $max): void {
     if((int)query('SELECT count FROM limits WHERE bucket=?',[$key])->fetchColumn()>$max)fail(429,'ส่งบ่อยเกินไป กรุณาลองใหม่ใน 15 นาที');
 }
 function transaction(callable $fn): mixed {
+    if(db()->inTransaction())return $fn();
     db()->beginTransaction();try{$r=$fn();db()->commit();return $r;}catch(Throwable $e){if(db()->inTransaction())db()->rollBack();throw $e;}
 }
 function normalize_order(array $d,array $c,bool $cash=false): array {
@@ -153,3 +154,5 @@ function electronic_ticket(string $ref,?string $token=null): array {
   return $out;
  });
 }
+
+require_once __DIR__.'/admins.php';
