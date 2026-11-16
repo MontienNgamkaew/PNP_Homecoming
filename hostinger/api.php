@@ -25,9 +25,9 @@ try {
     }
 
     if($path==='/api/totals'){
-       $totals=array_fill_keys(['donate','fund','tables','shirts'],0);
-       foreach(query("SELECT type,COALESCE(SUM(amount_cents),0) AS cents FROM orders WHERE status='confirmed' GROUP BY type")->fetchAll() as $r){if(array_key_exists($r['type'],$totals))$totals[$r['type']]=(int)$r['cents'];}
-       reply(200,['by_type'=>$totals,'total_cents'=>array_sum($totals),'updated_at'=>gmdate('c')]);
+       $totals=array_fill_keys(['donate','fund','tables','shirts'],0);$reported=$totals;
+       foreach(query("SELECT type,status,COALESCE(SUM(amount_cents),0) AS cents FROM orders WHERE status IN ('pending','confirmed') GROUP BY type,status")->fetchAll() as $r){if(array_key_exists($r['type'],$totals)){$reported[$r['type']]+=(int)$r['cents'];if($r['status']==='confirmed')$totals[$r['type']]=(int)$r['cents'];}}
+       reply(200,['by_type'=>$totals,'total_cents'=>array_sum($totals),'reported_by_type'=>$reported,'reported_total_cents'=>array_sum($reported),'updated_at'=>gmdate('c')]);
     }
 
     if($path==='/api/settings/revision')reply(200,['revision'=>(int)query('SELECT revision FROM app_settings WHERE id=1')->fetchColumn()]);

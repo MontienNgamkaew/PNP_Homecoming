@@ -233,9 +233,9 @@ class Hostinger(unittest.TestCase):
   settings['hero']['eyebrow']='ตรวจเลขรุ่น';status,saved,_=self.post('/api/admin/settings',settings);self.assertEqual(status,200)
   self.assertEqual(self.request('/api/settings/revision')[1],{'revision':saved['revision']})
   self.assertLess(len(json.dumps(revision)),40)
- def test_17_public_confirmed_totals(self):
+ def test_17_public_reported_and_confirmed_totals(self):
   before=self.request('/api/totals')[1]
-  self.assertEqual(set(before),{'by_type','total_cents','updated_at'})
+  self.assertEqual(set(before),{'by_type','total_cents','reported_by_type','reported_total_cents','updated_at'})
   self.assertEqual(set(before['by_type']),{'donate','fund','tables','shirts'})
   refs=[]
   for kind,amount,status in [('donate','123.45','confirmed'),('fund','456.78','confirmed'),('shirts','299','pending'),('donate','999','rejected')]:
@@ -251,7 +251,20 @@ class Hostinger(unittest.TestCase):
    self.assertEqual(result['by_type']['shirts'],before['by_type']['shirts'])
    self.assertEqual(result['total_cents']-before['total_cents'],58023)
    self.assertEqual(result['total_cents'],sum(result['by_type'].values()))
+   self.assertEqual(result['reported_total_cents']-before['reported_total_cents'],87923)
+   self.assertEqual(result['reported_by_type']['shirts']-before['reported_by_type']['shirts'],29900)
+   self.assertEqual(result['reported_total_cents'],sum(result['reported_by_type'].values()))
    self.assertEqual(response[2]['Cache-Control'],'no-store')
+   # Cash is counted as soon as recorded, without admin confirmation.
+   cash=self.payload(type='fund',amount='50',request_id=uuid.uuid4().hex,collector='ผู้รับเงินทดสอบ',received_date='2026-11-16')
+   code,receipt,_=self.post('/api/admin/cash-receipt',cash);self.assertEqual(code,200,receipt);refs.append(receipt['ref'])
+   pending=self.request('/api/totals')[1];self.assertEqual(pending['reported_total_cents'],result['reported_total_cents']+5000);self.assertEqual(pending['total_cents'],result['total_cents'])
+   # Confirming moves money to the small confirmed figure; never doubles the headline.
+   self.assertEqual(self.post('/api/admin/order-status',{'ref':refs[2],'status':'confirmed'})[0],200)
+   confirmed=self.request('/api/totals')[1];self.assertEqual(confirmed['reported_total_cents'],pending['reported_total_cents']);self.assertEqual(confirmed['total_cents'],pending['total_cents']+29900)
+   self.assertEqual(self.post('/api/admin/order-status',{'ref':receipt['ref'],'status':'rejected'})[0],200)
+   rejected=self.request('/api/totals')[1];self.assertEqual(rejected['reported_total_cents'],confirmed['reported_total_cents']-5000);self.assertEqual(rejected['total_cents'],confirmed['total_cents'])
+   self.assertNotIn('phone',json.dumps(rejected));self.assertNotIn('name',json.dumps(rejected))
   finally:
    for ref in refs:self.sql("DELETE FROM order_items WHERE order_ref='"+ref+"'; DELETE FROM order_audit WHERE ref='"+ref+"'; DELETE FROM orders WHERE ref='"+ref+"'",self.name)
  def test_18_shirt_image_settings(self):

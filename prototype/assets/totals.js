@@ -5,12 +5,12 @@ function stopTotals() {
 }
 function totals() {
   const categories = [['donate','01','ทอดผ้าป่าเพื่อการศึกษา','♡'],['fund','02','กองทุนช่างกลโรงงาน','⚙'],['tables','03','จองโต๊ะจีน','◉'],['shirts','04','เสื้อที่ระลึก','✦']];
-  app.innerHTML = `<section class="totals-board" id="totals-board" aria-label="ยอดร่วมงานที่ยืนยันแล้ว">
+  app.innerHTML = `<section class="totals-board" id="totals-board" aria-label="ยอดร่วมงานอย่างไม่เป็นทางการ">
     <div class="totals-toolbar"><a href="#home">← หน้าหลัก</a><button class="totals-screen" type="button">⛶ เต็มหน้าจอ</button></div>
     <div class="totals-title"><img class="totals-event-logo" src="assets/totals/event-logo-cutout-v1.webp" alt="คืนสู่เหย้าศิษย์เก่า การอาชีพพนมไพร ครั้งที่ 2" width="480" height="270"><h1>ขอบคุณทุกน้ำใจ ที่ร่วมสร้างอนาคตให้น้อง ๆ</h1><p>คืนสู่เหย้า การอาชีพพนมไพร ครั้งที่ 2</p></div>
-    <div class="totals-grand"><span>ยอดรวม</span><strong id="totals-grand-value">—</strong><span class="totals-unit">บาท</span></div>
+    <div class="totals-grand"><span>ยอดรวม</span><small class="totals-unofficial">ยอดไม่เป็นทางการ</small><strong id="totals-grand-value">—</strong><span class="totals-unit">บาท</span><p class="totals-confirmed">ยืนยันแล้ว <b id="totals-confirmed-value">—</b> บาท</p></div>
     <div class="totals-categories">${categories.map(([key,n,title,icon])=>`<article class="totals-category totals-${key}"><div class="totals-category-top"><span>${n}</span><span aria-hidden="true">${icon}</span></div><h2>${title}</h2><div><strong id="totals-${key}-value">—</strong><small>บาท</small></div></article>`).join('')}</div>
-    <div class="totals-foot"><span>เฉพาะยอดที่ตรวจสอบและยืนยันแล้ว</span><button type="button" class="totals-refresh">↻ อัปเดตยอด</button><div class="totals-timestamp"><span id="totals-update">กำลังโหลดวันและเวลาของยอด…</span><small id="totals-connection" role="status">อัปเดตอัตโนมัติทุก 15 วินาที</small></div></div>
+    <div class="totals-foot"><span>ยอดแจ้งเงินโอนและเงินสด · ไม่รวมรายการยกเลิก / ไม่ผ่าน</span><button type="button" class="totals-refresh">↻ อัปเดตยอด</button><div class="totals-timestamp"><span id="totals-update">กำลังโหลดวันและเวลาของยอด…</span><small id="totals-connection" role="status">อัปเดตอัตโนมัติทุก 5 วินาที</small></div></div>
   </section>`;
   const board = document.getElementById('totals-board');
   const format = cents => (cents / 100).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -23,15 +23,17 @@ function totals() {
       const response = await fetch('/api/totals',{cache:'no-store',signal:controller.signal});
       if(!response.ok) throw new Error('unavailable');
       const data = await response.json();
-      if(!Number.isSafeInteger(data.total_cents) || data.total_cents < 0 || categories.some(([key])=>!Number.isSafeInteger(data.by_type?.[key]) || data.by_type[key]<0) || categories.reduce((sum,[key])=>sum+data.by_type[key],0)!==data.total_cents) throw new Error('invalid totals');
+      const validTotals=(total,byType)=>Number.isSafeInteger(total)&&total>=0&&categories.every(([key])=>Number.isSafeInteger(byType?.[key])&&byType[key]>=0)&&categories.reduce((sum,[key])=>sum+byType[key],0)===total;
+      if(!validTotals(data.total_cents,data.by_type)||!validTotals(data.reported_total_cents,data.reported_by_type)||categories.some(([key])=>data.by_type[key]>data.reported_by_type[key]))throw new Error('invalid totals');
       const asOf = new Date(data.updated_at || Date.now());
       if(!Number.isFinite(asOf.getTime())) throw new Error('invalid timestamp');
       if(!board.isConnected) return;
-      document.getElementById('totals-grand-value').textContent = format(data.total_cents);
-      for(const [key] of categories) document.getElementById(`totals-${key}-value`).textContent = format(data.by_type[key]);
+      document.getElementById('totals-grand-value').textContent = format(data.reported_total_cents);
+      document.getElementById('totals-confirmed-value').textContent = format(data.total_cents);
+      for(const [key] of categories) document.getElementById(`totals-${key}-value`).textContent = format(data.reported_by_type[key]);
       board.classList.remove('totals-stale');
       document.getElementById('totals-update').textContent = 'ยอด ณ '+asOf.toLocaleDateString('th-TH',{timeZone:'Asia/Bangkok',day:'numeric',month:'long',year:'numeric'})+' เวลา '+asOf.toLocaleTimeString('th-TH',{timeZone:'Asia/Bangkok',hour:'2-digit',minute:'2-digit',second:'2-digit'})+' น.';
-      document.getElementById('totals-connection').textContent='เวลาไทย · อัปเดตทุก 15 วินาที';
+      document.getElementById('totals-connection').textContent='เวลาไทย · อัปเดตทุก 5 วินาที';
     } catch(error) {
       if(board.isConnected) {board.classList.add('totals-stale'); document.getElementById('totals-connection').textContent='เชื่อมต่อไม่สำเร็จ · กำลังแสดงยอดล่าสุดที่โหลดได้';}
     } finally { clearTimeout(timeout); busy=false; if(totalsController===controller) totalsController=null; }
@@ -47,5 +49,5 @@ function totals() {
   board.addEventListener('fullscreenchange',()=>{screen.textContent=document.fullscreenElement?'✕ ออกจากเต็มจอ':'⛶ เต็มหน้าจอ';});
   board.addEventListener('keydown',event=>{if(event.key==='Escape'){board.classList.remove('totals-expanded');screen.textContent='⛶ เต็มหน้าจอ';}});
   board.querySelector('.totals-refresh').addEventListener('click',refresh);
-  refresh(); totalsTimer=setInterval(()=>{if(!document.hidden) refresh();},15000);
+  refresh(); totalsTimer=setInterval(()=>{if(!document.hidden) refresh();},5000);
 }

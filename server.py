@@ -357,12 +357,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == '/api/totals':
             totals = dict.fromkeys(('donate', 'fund', 'tables', 'shirts'), 0)
+            reported = totals.copy()
             with connect() as c:
-                rows = c.execute("SELECT type,COALESCE(SUM(amount_cents),0) AS cents FROM orders WHERE status='confirmed' GROUP BY type").fetchall()
+                rows = c.execute("SELECT type,status,COALESCE(SUM(amount_cents),0) AS cents FROM orders WHERE status IN ('pending','confirmed') GROUP BY type,status").fetchall()
             for row in rows:
                 if row['type'] in totals:
-                    totals[row['type']] = int(row['cents'])
-            return self.send(200, {'by_type':totals, 'total_cents':sum(totals.values())})
+                    reported[row['type']] += int(row['cents'])
+                    if row['status'] == 'confirmed':
+                        totals[row['type']] = int(row['cents'])
+            return self.send(200, {'by_type':totals, 'total_cents':sum(totals.values()), 'reported_by_type':reported, 'reported_total_cents':sum(reported.values())})
 
         if path == '/api/settings/revision':
             with connect() as c:
