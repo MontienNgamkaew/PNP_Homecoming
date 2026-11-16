@@ -8,7 +8,7 @@ function totals() {
   app.innerHTML = `<section class="totals-board" id="totals-board" aria-label="ยอดร่วมงานอย่างไม่เป็นทางการ">
     <div class="totals-toolbar"><a href="#home">← หน้าหลัก</a><button class="totals-screen" type="button">⛶ เต็มหน้าจอ</button></div>
     <div class="totals-title"><img class="totals-event-logo" src="assets/totals/event-logo-cutout-v1.webp" alt="คืนสู่เหย้าศิษย์เก่า การอาชีพพนมไพร ครั้งที่ 2" width="480" height="270"><h1>ขอบคุณทุกน้ำใจ ที่ร่วมสร้างอนาคตให้น้อง ๆ</h1><p>คืนสู่เหย้า การอาชีพพนมไพร ครั้งที่ 2</p></div>
-    <div class="totals-grand"><span>ยอดรวม</span><small class="totals-unofficial">ยอดไม่เป็นทางการ</small><strong id="totals-grand-value">—</strong><span class="totals-unit">บาท</span><p class="totals-confirmed">ยืนยันแล้ว <b id="totals-confirmed-value">—</b> บาท</p></div>
+    <div class="totals-grand"><span>ยอดรวม</span><strong id="totals-grand-value">—</strong><span class="totals-unit">บาท</span><p class="totals-confirmed">ยืนยันแล้ว <b id="totals-confirmed-value">—</b> บาท</p></div>
     <div class="totals-categories">${categories.map(([key,n,title,icon])=>`<article class="totals-category totals-${key}"><div class="totals-category-top"><span>${n}</span><span aria-hidden="true">${icon}</span></div><h2>${title}</h2><div><strong id="totals-${key}-value">—</strong><small>บาท</small></div></article>`).join('')}</div>
     <div class="totals-foot"><span>ยอดแจ้งเงินโอนและเงินสด · ไม่รวมรายการยกเลิก / ไม่ผ่าน</span><button type="button" class="totals-refresh">↻ อัปเดตยอด</button><div class="totals-timestamp"><span id="totals-update">กำลังโหลดวันและเวลาของยอด…</span><small id="totals-connection" role="status">อัปเดตอัตโนมัติทุก 5 วินาที</small></div></div>
   </section>`;
